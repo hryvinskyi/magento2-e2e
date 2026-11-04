@@ -412,8 +412,8 @@ refuse, because a dependency whose tag differs from the lockfile's no longer cou
 under `allow-git=root`. `--allow-git=all` holds for that one command; `npm ci` afterwards needs nothing
 more than the line in `.npmrc`. Read
 [CHANGELOG.md](CHANGELOG.md) first; the package follows semantic versioning, and its public API is what
-`src/index.ts` exports. After upgrading run `npm install`, then your project's `typecheck` (the declared
-types are the contract) and one run against a local copy.
+`src/index.ts` exports. After upgrading run your project's `typecheck` (the declared types are the
+contract) and one run against a local copy.
 
 ## Developing the package
 
