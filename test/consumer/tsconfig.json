@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "paths": {
+      "@hryvinskyi/magento2-e2e": ["../../src/index.ts"]
+    }
+  },
+  "include": ["**/*.ts", "server.mjs", "../../src/page-globals.d.ts"],
+  "exclude": ["magento/vendor/other"]
+}

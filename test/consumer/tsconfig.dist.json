@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": false,
+    "paths": {
+      "@hryvinskyi/magento2-e2e": ["../../dist/index.d.ts"]
+    }
+  }
+}

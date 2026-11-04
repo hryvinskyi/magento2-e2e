@@ -1,0 +1,64 @@
+{
+  "name": "@hryvinskyi/magento2-e2e",
+  "version": "1.0.0",
+  "description": "A Playwright end-to-end testing framework for Magento 2 storefronts: stores and environments, safety tags, module-owned tests",
+  "keywords": [
+    "magento",
+    "magento2",
+    "playwright",
+    "e2e",
+    "testing"
+  ],
+  "license": "MIT",
+  "author": "Volodymyr Hryvinskyi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hryvinskyi/magento2-e2e.git"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "magento-e2e": "dist/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "skill",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "precompile": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "compile": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/consumer && tsc --noEmit -p tsconfig.templates.json",
+    "typecheck:dist": "tsc --noEmit -p test/consumer/tsconfig.dist.json",
+    "lint": "eslint .",
+    "test": "playwright test -c test"
+  },
+  "peerDependencies": {
+    "@playwright/test": "^1.51.0"
+  },
+  "dependencies": {
+    "allure-playwright": "^3.13.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@playwright/test": "~1.63.0",
+    "@types/node": "^22",
+    "eslint": "^9",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8"
+  }
+}

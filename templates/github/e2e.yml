@@ -1,0 +1,231 @@
+name: E2E
+
+# Browser tests of a Magento 2 storefront, run with @hryvinskyi/magento2-e2e. Copy this file to
+# .github/workflows/e2e.yml of the shop's repository and adjust what the comments mark.
+#
+# Three things start a run:
+#   - a deployment: the deployment tool calls the hook in templates/deploy-hook/notify-github.sh after a
+#     release is activated, which sends a `repository_dispatch` event of type `site-deployed` with
+#     { "environment": "<name>", "sha": "<commit>" }; the run tests that commit with the smoke set;
+#   - a nightly schedule, which catches what no deployment announces (a config change, a feed);
+#   - a manual dispatch, with the environment and an optional --grep pattern.
+#
+# Composer packages' tests are found only when `vendor/` is in the checkout. A project that does not
+# commit `vendor/` runs `composer install --no-scripts --no-plugins` before the tests (or drops the
+# `vendor/` patterns below, knowingly): without `vendor/composer/installed.json` those tests are
+# silently not discovered. A path repository outside `vendor/` (for example `packages/`) needs its own
+# line in the sparse checkout.
+#
+# Settings this workflow reads (Settings > Secrets and variables > Actions):
+#   secrets  E2E_HTTP_USER, E2E_HTTP_PASSWORD   HTTP authentication in front of a site, when it has one
+#            SLACK_WEBHOOK_URL                   a failed run is announced there; unset, nothing is sent
+#            CLOUDFLARE_API_TOKEN                publishes the shared report (Account > Cloudflare Pages > Edit);
+#                                                unset, no report is published
+#            E2E_REPORT_PASSWORD                 the password in front of the shared report; required whenever
+#                                                the report is published
+#            E2E_SMTP_HOST, E2E_SMTP_PORT, E2E_SMTP_USERNAME, E2E_SMTP_PASSWORD
+#                                                the summary e-mail; unset, nothing is sent
+#            DEPLOY_PRODUCTION_URL               the address that starts the production deployment once staging
+#                                                is green; unset, the promote job does nothing
+#   variables  CLOUDFLARE_ACCOUNT_ID, E2E_PAGES_PROJECT   where the shared report is published
+#              E2E_REPORT_USER                  the report's login name (default: reports)
+#              E2E_REPORT_TITLE                 the words reports and e-mails are named with (default: Storefront checks)
+#              E2E_REPORT_URL                   the report project's own domain, linked in production's e-mail
+#              E2E_REPORT_EMAIL_FROM, E2E_REPORT_EMAIL_TO   sender and recipients (comma-separated) of the e-mail
+# A project whose environments read settings of their own (a staging address, a secret) adds them to the
+# `env` of the job or of the test step.
+
+on:
+  repository_dispatch:
+    types: [site-deployed]
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to test (the names of the project's environments)
+        type: choice
+        options: [production, staging]
+        default: production
+      grep:
+        description: 'Only tests matching this pattern (e.g. @smoke); empty runs everything allowed there'
+        type: string
+        default: ''
+
+concurrency:
+  group: e2e-${{ github.event.client_payload.environment || inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  E2E_ENV: ${{ github.event.client_payload.environment || inputs.environment || 'production' }}
+  # A deployment is answered with the smoke set; a nightly or manual run takes everything allowed.
+  E2E_GREP: ${{ github.event_name == 'repository_dispatch' && '@smoke' || inputs.grep || '' }}
+  # Every run here is read outside the team: each test keeps its video and screenshots, and the
+  # results feed the shared report and the summary e-mail.
+  E2E_EVIDENCE: '1'
+  E2E_TRIGGER: ${{ github.event_name == 'repository_dispatch' && 'deployment' || github.event_name == 'schedule' && 'nightly' || 'manual' }}
+  E2E_COMMIT: ${{ github.event.client_payload.sha || github.sha }}
+  E2E_REPORT_TITLE: ${{ vars.E2E_REPORT_TITLE }}
+
+jobs:
+  test:
+    name: Playwright (${{ github.event.client_payload.environment || inputs.environment || 'production' }})
+    runs-on: ubuntu-latest
+    # A job that times out publishes no report and sends no e-mail: keep the limit above the longest run.
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: e2e
+    env:
+      E2E_HTTP_USER: ${{ secrets.E2E_HTTP_USER }}
+      E2E_HTTP_PASSWORD: ${{ secrets.E2E_HTTP_PASSWORD }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      PAGES_PROJECT: ${{ vars.E2E_PAGES_PROJECT }}
+      E2E_REPORT_USER: ${{ vars.E2E_REPORT_USER || 'reports' }}
+      SMTP_HOST: ${{ secrets.E2E_SMTP_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tests of the release that was deployed, not of whatever the default branch holds now.
+          ref: ${{ github.event.client_payload.sha || github.sha }}
+          fetch-depth: 1
+          # The project's own tests, plus what module-owned tests need: the tests themselves, the module
+          # names and which modules are enabled (a disabled module's tests are not run). Module tests that
+          # run a module's browser script in Node also need the scripts and the few storefront libraries
+          # they load; a file missing here fails those tests in CI only, because locally the whole tree is
+          # there. Gitignore syntax has no `{a,b}`: one pattern per line.
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /e2e/
+            /app/etc/config.php
+            /app/code/*/*/registration.php
+            /app/code/*/*/Test/E2e/
+            /app/code/*/*/view/frontend/web/js/
+            /vendor/composer/installed.json
+            /vendor/*/*/registration.php
+            /vendor/*/*/Test/E2e/
+            /lib/web/jquery.js
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Run tests
+        run: npx playwright test ${E2E_GREP:+--grep "$E2E_GREP"}
+
+      # The team's copy: the Playwright report with traces, kept on GitHub.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-${{ env.E2E_ENV }}-${{ github.run_id }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 14
+
+      # The shared copy: an Allure report with the videos and screenshots and without traces, on
+      # Cloudflare Pages behind a login that every address of the project asks for. Each run is a
+      # deployment with its own address (the link in the e-mail); the newest run of production is also at
+      # the project's own domain. The history file is kept in the Actions cache per environment, so each
+      # report shows the trend.
+      - name: Restore the report history
+        if: ${{ !cancelled() && env.CLOUDFLARE_API_TOKEN != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: e2e/allure-history
+          key: allure-history-${{ env.E2E_ENV }}-${{ github.run_id }}
+          restore-keys: allure-history-${{ env.E2E_ENV }}-
+
+      - name: Publish the shared report
+        id: publish
+        if: ${{ !cancelled() && env.CLOUDFLARE_API_TOKEN != '' }}
+        env:
+          E2E_REPORT_PASSWORD: ${{ secrets.E2E_REPORT_PASSWORD }}
+          REPORT_HOME: ${{ vars.E2E_REPORT_URL }}
+        run: |
+          set -euo pipefail
+          npx magento-e2e strip-traces allure-results
+          E2E_REPORT_NAME="${E2E_REPORT_TITLE:-Storefront checks} $E2E_ENV, $E2E_TRIGGER ${E2E_COMMIT:0:7}" \
+            npx allure generate --config allurerc.mjs allure-results
+
+          # The login in front of the report. Without both settings the command fails and writes no file,
+          # so a report is never published without one.
+          npx magento-e2e report-gate allure-report
+
+          # A project's own domain shows its `main` branch, the default of a project made in the
+          # dashboard too: production's runs go there, the other environments' to their own branch alias.
+          branch="$E2E_ENV"
+          if [ "$E2E_ENV" = production ]; then branch=main; fi
+          npx --yes wrangler@4.142.0 pages project create "$PAGES_PROJECT" --production-branch main \
+            > /dev/null 2>&1 || true
+          npx --yes wrangler@4.142.0 pages deploy allure-report \
+            --project-name "$PAGES_PROJECT" \
+            --branch "$branch" \
+            --commit-hash "$E2E_COMMIT" \
+            --commit-message "$E2E_TRIGGER run on $E2E_ENV" \
+            --commit-dirty=true | tee deploy.log
+          url="$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' deploy.log | head -1)"
+          # Production's newest report is at the project's own domain: that is the link people get.
+          # Other environments link to their run's deployment, which the domain does not show.
+          if [ "$E2E_ENV" = production ] && [ -n "$REPORT_HOME" ]; then url="$REPORT_HOME"; fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the report history
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        uses: actions/cache/save@v4
+        with:
+          path: e2e/allure-history
+          key: allure-history-${{ env.E2E_ENV }}-${{ github.run_id }}
+
+      - name: Write the summary e-mail
+        id: summary
+        if: ${{ !cancelled() }}
+        env:
+          E2E_REPORT_URL: ${{ steps.publish.outputs.url }}
+        run: npx magento-e2e summary reports/results.json
+
+      - name: E-mail the summary
+        if: ${{ !cancelled() && env.SMTP_HOST != '' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.E2E_SMTP_HOST }}
+          server_port: ${{ secrets.E2E_SMTP_PORT }}
+          username: ${{ secrets.E2E_SMTP_USERNAME }}
+          password: ${{ secrets.E2E_SMTP_PASSWORD }}
+          from: ${{ vars.E2E_REPORT_EMAIL_FROM }}
+          to: ${{ vars.E2E_REPORT_EMAIL_TO }}
+          subject: ${{ steps.summary.outputs.subject }}
+          html_body: file://e2e/reports/summary.html
+
+      - name: Notify Slack on failure
+        if: ${{ failure() && env.SLACK_WEBHOOK_URL != '' }}
+        run: |
+          curl -fsS -X POST -H 'Content-Type: application/json' "$SLACK_WEBHOOK_URL" --data @- <<JSON
+          {"text": ":x: E2E failed on *${E2E_ENV}* (${E2E_COMMIT}) - ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+          JSON
+
+  # The gate: a green run against staging releases the same commit to production. It stays idle until
+  # staging announces its deployments and the address that starts the production deployment is stored.
+  promote:
+    name: Deploy to production
+    needs: test
+    if: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment == 'staging' }}
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PRODUCTION_URL: ${{ secrets.DEPLOY_PRODUCTION_URL }}
+      DEPLOY_SHA: ${{ github.event.client_payload.sha }}
+    steps:
+      - name: Start the production deployment
+        if: ${{ env.DEPLOY_PRODUCTION_URL != '' }}
+        run: curl -fsS -X POST "${DEPLOY_PRODUCTION_URL}?sha=${DEPLOY_SHA}"

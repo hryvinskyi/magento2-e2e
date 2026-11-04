@@ -1,0 +1,27 @@
+{
+    "packages": [
+        {
+            "name": "acme/module-package",
+            "version": "1.0.0",
+            "type": "magento2-module",
+            "autoload": {
+                "files": ["registration.php"],
+                "psr-4": { "Acme\\Package\\": "" }
+            },
+            "install-path": "../acme/module-package"
+        },
+        {
+            "name": "other/module-linked",
+            "version": "dev-main",
+            "type": "magento2-module",
+            "dist": { "type": "path", "url": "packages/module-linked" },
+            "autoload": {
+                "files": ["registration.php"],
+                "psr-4": { "Other\\Linked\\": "" }
+            },
+            "install-path": "../other/module-linked"
+        }
+    ],
+    "dev": true,
+    "dev-package-names": []
+}

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node 22, Playwright from the lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run compile
+      - name: dist/ is committed as the sources build it
+        run: git add -N dist && git diff --exit-code --stat -- dist
+      - run: npm run typecheck:dist
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+  peer-floor:
+    # The declared peer range is `^1.51.0`: this job runs the suite on its lowest version, so the range
+    # is a tested one rather than a guess.
+    name: Node 22, Playwright 1.51
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i --no-save @playwright/test@1.51
+      - run: npm run typecheck
+      - run: npm run compile
+      - run: npx playwright install --with-deps chromium
+      - run: npm test

@@ -1,0 +1,27 @@
+{
+  "name": "shop-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end tests for the shop's storefront",
+  "scripts": {
+    "test": "playwright test",
+    "test:local": "E2E_ENV=local playwright test",
+    "test:staging": "E2E_ENV=staging playwright test",
+    "test:production": "E2E_ENV=production playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit",
+    "browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@hryvinskyi/magento2-e2e": "git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.0",
+    "@playwright/test": "^1.51.0",
+    "@types/node": "^22.0.0",
+    "allure": "^3.19.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

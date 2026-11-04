@@ -1,0 +1,8 @@
+node_modules/
+test-results/
+playwright-report/
+*.tgz
+.env
+# Created by the consumer runs: the symbolic link a Composer path repository installs.
+test/consumer/magento/vendor/other/
+.idea/

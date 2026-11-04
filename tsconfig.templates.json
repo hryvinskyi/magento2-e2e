@@ -1,0 +1,10 @@
+{
+  "extends": "./templates/project/tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@hryvinskyi/magento2-e2e": ["./src/index.ts"],
+      "@e2e/*": ["./templates/project/src/*"]
+    }
+  },
+  "include": ["templates/project/**/*.ts", "src/page-globals.d.ts"]
+}
