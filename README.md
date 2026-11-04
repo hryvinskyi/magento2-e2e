@@ -27,7 +27,7 @@ has exactly one copy of the runner), TypeScript 5.x.
 
 ```
 echo 'allow-git=root' >> .npmrc
-npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.1"
+npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.2"
 ```
 
 npm 12 refuses git dependencies unless the project opts in, which that line in `.npmrc` does; earlier
@@ -210,10 +210,11 @@ config file is evaluated again in every worker, so functions in the project defi
 resolvers, page guards) arrive intact. Define them at the top level of the config's imports, not from
 state built while the runner started.
 
-**The preflight.** Before any test starts, the run asks the default store's home page, with the run's
-login and user agent, up to three times, ten seconds apart. If it never answers 200, the run stops with
-one message instead of half an hour of red retries. It asks nothing the tests would not ask first, but
-it does make every run, a Node-only module spec included, need a site: use `E2E_PREFLIGHT=off` (or
+**The preflight.** Before any test starts, the run opens the default store's home page in Chromium, with
+the run's login and user agent and without anything the page would load, up to three times, ten seconds
+apart. If it never answers 200, the run stops with one message instead of half an hour of red retries. It
+is the browser the tests use, so a firewall that challenges other clients lets it through as it does them.
+It does make every run, a Node-only module spec included, need a site: use `E2E_PREFLIGHT=off` (or
 `preflight: false` in the config) for a run that needs none.
 
 ## Where tests live
@@ -404,7 +405,7 @@ address. The package ships no token of its own.
 Move to a release with one command that names its tag:
 
 ```
-npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.1"
+npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.2"
 ```
 
 Editing the tag in `package.json` is not enough: npm 10 quietly keeps the locked commit, and npm 11 and 12

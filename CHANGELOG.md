@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+- The preflight opens the page in Chromium, for the document alone, instead of asking with Node's HTTP
+  client. A firewall that lets browsers through answered that client with 403, which stopped every run
+  against such a site, and on a machine where Node may not reach a local address the check failed although
+  the tests could run.
+
 ## 1.0.1
 
 - The starter project holds `npmrc` (rename it to `.npmrc`) with `allow-git=root`, and the README says why:

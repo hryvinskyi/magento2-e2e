@@ -21,6 +21,17 @@ test.describe('the storefront check before a run', () => {
         expect(run.received.filter(request => request.path === '/')).toHaveLength(3);
     });
 
+    test('asks as the browser the tests use, for the document alone', async () => {
+        const run = await runConsumer({
+            variables: { E2E_ENV: 'local' },
+            args: ['--project=desktop', '--grep=E2E_ENV names'],
+        });
+
+        expect(run.report.errors).toEqual([]);
+        expect(run.received.map(request => request.path)).toEqual(['/']);
+        expect(run.received[0]?.accept).toContain('text/html');
+    });
+
     test('is skipped for one run with E2E_PREFLIGHT=off', async () => {
         const run = await runConsumer({
             variables: { E2E_ENV: 'local', E2E_CONSUMER_HOME_STATUS: '503', E2E_PREFLIGHT: 'off' },

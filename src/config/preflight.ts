@@ -1,5 +1,5 @@
-import { devices, request } from '@playwright/test';
-import type { APIRequestContext, FullConfig } from '@playwright/test';
+import { chromium, devices } from '@playwright/test';
+import type { FullConfig, Page } from '@playwright/test';
 import type { MagentoProject } from '../project/project';
 import { isMagentoProject } from '../project/project';
 
@@ -24,13 +24,14 @@ export const DEFAULT_SCHEDULE: PreflightSchedule = Object.freeze({
 });
 
 const REQUEST_TIMEOUT_MS = 60_000;
-const MAX_REDIRECTS = 5;
 
 /**
  * Makes sure the storefront answers before any test starts. A storefront that is down fails every
  * test of the run, each with its retries, for half an hour; this stops the run within a minute and
- * says why. It asks the default store's home page, the page the tests open first, with the login
- * and the user agent the tests use, so it depends on nothing the tests do not.
+ * says why. It asks the default store's home page, the page the tests open first, in the browser the
+ * tests use and with their login and user agent, so it depends on nothing the tests do not: a client
+ * of another kind can be turned away by a firewall that lets the browser through, or fail to reach a
+ * local site the browser reaches.
  *
  * It is Playwright's global setup of a config `defineMagentoConfig()` made, and finds the project in
  * that config.
@@ -40,16 +41,20 @@ export default async function preflight(config: FullConfig): Promise<void> {
     const environment = project.environment();
     const url = environment.baseUrl(project.store(project.defaultStore));
     const credentials = environment.httpCredentials();
-    const context = await request.newContext({
-        ignoreHTTPSErrors: environment.ignoresHttpsErrors,
-        ...(credentials === undefined ? {} : { httpCredentials: credentials }),
-        userAgent: `${devices['Desktop Chrome'].userAgent} ${environment.userAgentSuffix()}`.trim(),
-    });
+    const browser = await chromium.launch();
 
     try {
-        await checkStorefront(environment.name, url, requestProbe(context));
+        const page = await browser.newPage({
+            ...devices['Desktop Chrome'],
+            ignoreHTTPSErrors: environment.ignoresHttpsErrors,
+            ...(credentials === undefined ? {} : { httpCredentials: credentials }),
+            userAgent: `${devices['Desktop Chrome'].userAgent} ${environment.userAgentSuffix()}`.trim(),
+        });
+
+        await askForTheDocumentAlone(page);
+        await checkStorefront(environment.name, url, pageProbe(page));
     } finally {
-        await context.dispose();
+        await browser.close();
     }
 }
 
@@ -102,14 +107,24 @@ export function projectInConfig(projects: readonly { readonly use: object }[]): 
     return project;
 }
 
-/** Asks with the run's request context; redirects are followed, a missing answer is described. */
-function requestProbe(context: APIRequestContext): StorefrontProbe {
+/**
+ * Lets only the page itself be fetched: nothing of what it loads is part of the question, and on the
+ * live shop none of it (a tracker above all) may run for a check that is no visit.
+ */
+async function askForTheDocumentAlone(page: Page): Promise<void> {
+    await page.route('**/*', async route => {
+        await (route.request().isNavigationRequest() ? route.fallback() : route.abort());
+    });
+}
+
+/** Asks by opening the page; redirects are followed, a missing answer is described. */
+function pageProbe(page: Page): StorefrontProbe {
     return {
         async answer(url: string): Promise<string> {
             try {
-                const response = await context.get(url, { timeout: REQUEST_TIMEOUT_MS, maxRedirects: MAX_REDIRECTS });
+                const response = await page.goto(url, { timeout: REQUEST_TIMEOUT_MS, waitUntil: 'commit' });
 
-                return String(response.status());
+                return response === null ? 'no answer' : String(response.status());
             } catch (error) {
                 return error instanceof Error ? `no answer (${error.message.split('\n')[0] ?? ''})` : 'no answer';
             }

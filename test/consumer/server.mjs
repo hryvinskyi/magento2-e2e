@@ -18,7 +18,8 @@ if (!Number.isInteger(homeStatus) || homeStatus < 100 || homeStatus > 599) {
     throw new Error('E2E_CONSUMER_HOME_STATUS must be an HTTP status.');
 }
 
-const PAGE = '<!doctype html><html><head><title>Consumer shop</title></head><body><p>shop</p></body></html>';
+const PAGE = '<!doctype html><html><head><title>Consumer shop</title></head>'
+    + '<body><p>shop</p><img src="/page-asset.png" alt=""></body></html>';
 
 /**
  * @param {http.IncomingMessage} request
@@ -29,7 +30,13 @@ function record(request, body) {
         return;
     }
 
-    const entry = { method: request.method ?? 'GET', host: request.headers.host ?? '', path: request.url ?? '/', body };
+    const entry = {
+        method: request.method ?? 'GET',
+        host: request.headers.host ?? '',
+        path: request.url ?? '/',
+        accept: request.headers.accept ?? '',
+        body,
+    };
 
     appendFileSync(log, `${JSON.stringify(entry)}\n`);
 }

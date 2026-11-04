@@ -15,7 +15,7 @@
     "browsers": "playwright install chromium"
   },
   "devDependencies": {
-    "@hryvinskyi/magento2-e2e": "git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.1",
+    "@hryvinskyi/magento2-e2e": "git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.2",
     "@playwright/test": "^1.51.0",
     "@types/node": "^22.0.0",
     "allure": "^3.19.0",
