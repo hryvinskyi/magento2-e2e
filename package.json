@@ -1,6 +1,6 @@
 {
   "name": "@hryvinskyi/magento2-e2e",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A Playwright end-to-end testing framework for Magento 2 storefronts: stores and environments, safety tags, module-owned tests",
   "keywords": [
     "magento",

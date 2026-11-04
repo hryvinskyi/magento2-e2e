@@ -76,6 +76,15 @@ class RunEnvironment {
             ...allowed.map(origin => new URL(origin).origin),
         ]);
     }
+    storeBaseUrls() {
+        return this.context.stores.map(store => this.baseUrl(store));
+    }
+    testOrderSecret() {
+        return (0, variables_1.setting)(this.variables, 'E2E_TEST_ORDER_SECRET');
+    }
+    testOrderReach() {
+        return this.definition.paysTestOrders === true && !this.targetsProduction() ? 'success-page' : 'payment-window';
+    }
     variable(name) {
         return (0, variables_1.setting)(this.variables, name);
     }

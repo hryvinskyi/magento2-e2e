@@ -6,9 +6,13 @@ import type { Duplex } from 'node:stream';
 /** One response the server gives for a path. */
 export interface Served {
     readonly body: string;
+    /** The answer's status; 200 when it names none. */
+    readonly status?: number;
     readonly type?: string;
     readonly delayMs?: number;
     readonly headers?: Readonly<Record<string, string>>;
+    /** Drops the connection once the request has arrived, instead of answering. */
+    readonly dropConnection?: boolean;
 }
 
 /** A request as the server received it. */
@@ -16,6 +20,9 @@ export interface Received {
     readonly method: string;
     readonly path: string;
     readonly cookie: string | undefined;
+    /** The request's headers, their names in lowercase as Node reads them. */
+    readonly headers: http.IncomingHttpHeaders;
+    readonly body: string;
 }
 
 /** The GUID a WebSocket handshake answer is derived with (RFC 6455, section 1.3). */
@@ -87,16 +94,35 @@ export class PageServer {
     private answer(request: http.IncomingMessage, response: http.ServerResponse): void {
         const path = request.url ?? '/';
         const page = Object.hasOwn(this.pages, path) ? this.pages[path] : undefined;
+        const chunks: Buffer[] = [];
 
-        this.received.push({ method: request.method ?? 'GET', path, cookie: request.headers.cookie });
-        setTimeout(() => {
-            response.writeHead(200, {
-                'Content-Type': page?.type ?? 'text/plain',
-                'Cache-Control': 'no-store',
-                ...page?.headers,
+        request.on('data', (chunk: Buffer) => {
+            chunks.push(chunk);
+        });
+        request.on('end', () => {
+            this.received.push({
+                method: request.method ?? 'GET',
+                path,
+                cookie: request.headers.cookie,
+                headers: request.headers,
+                body: Buffer.concat(chunks).toString('utf8'),
             });
-            response.end(page?.body ?? '');
-        }, page?.delayMs ?? 0);
+
+            if (page?.dropConnection === true) {
+                request.socket.destroy();
+
+                return;
+            }
+
+            setTimeout(() => {
+                response.writeHead(page?.status ?? 200, {
+                    'Content-Type': page?.type ?? 'text/plain',
+                    'Cache-Control': 'no-store',
+                    ...page?.headers,
+                });
+                response.end(page?.body ?? '');
+            }, page?.delayMs ?? 0);
+        });
     }
 
     /** Completes the handshake and keeps the socket open until the server stops; nothing is ever sent on it. */

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { consentCookie, defineProject, sessionStorageFlag } from '@hryvinskyi/magento2-e2e';
+import { consentCookie, defineProject, sessionStorageFlag, TEST_ORDER_TAG, testOrderSafetyRule } from '@hryvinskyi/magento2-e2e';
 import type { EnvironmentDefinition, EnvironmentVariables, MagentoProject, Store as BaseStore } from '@hryvinskyi/magento2-e2e';
 
 /** Which host a store is served from; each environment says what that host is there. */
@@ -63,4 +63,5 @@ export const project: MagentoProject = defineProject({
     pageGuards: [sessionStorageFlag(OVERLAY_FLAG, 'yes')],
     blockedRequests: [new RegExp(`${BLOCKED_PATH}(?:[/?]|$)`)],
     productionWriteGuard: {},
+    safetyTags: { [TEST_ORDER_TAG]: testOrderSafetyRule },
 });

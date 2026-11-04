@@ -1,6 +1,7 @@
 import { chromium, devices } from '@playwright/test';
 import type { FullConfig, Page } from '@playwright/test';
 import type { MagentoProject } from '../project/project';
+import { navigatesThePage } from '../navigation';
 import { isMagentoProject } from '../project/project';
 
 /** Asks for a page and says how it answered. */
@@ -117,7 +118,7 @@ async function askForTheDocumentAlone(page: Page): Promise<void> {
     await page.route('**/*', async route => {
         const request = route.request();
 
-        await (request.isNavigationRequest() && request.frame() === page.mainFrame() ? route.fallback() : route.abort());
+        await (navigatesThePage(request, page) ? route.fallback() : route.abort());
     });
 }
 

@@ -23,6 +23,15 @@ export interface SafetyTagRule {
      */
     readonly refusal?: (environment: Environment) => string | undefined;
 }
+/** Carried by a test that places a test order the shop recognises, and abandons it. */
+export declare const TEST_ORDER_TAG = "@order";
+/**
+ * The rule a project adds to `safetyTags` to place test orders. It runs on production, where a test
+ * order goes no further than the payment window; without the secret it is skipped, never placed as
+ * an ordinary order, and on the live shop it also needs the project's `productionWriteGuard`, which
+ * keeps the payment window and every tracker of the page from receiving a write from the test.
+ */
+export declare const testOrderSafetyRule: SafetyTagRule;
 /** Whether a tag is one of the three every project has. */
 export declare function isCoreSafetyTag(tag: string): boolean;
 /**
@@ -50,3 +59,9 @@ export declare class SafetyTagRegistry {
  * test by its `title`.
  */
 export declare function declaredSafetyTag(safetyTags: readonly string[], testTags: readonly string[], title: string): string;
+/**
+ * Refuses a test that may not place test orders, naming it by its `title`: one without the tag, and one
+ * in a project that did not register it. The tag's own rule, and a run's `--grep-invert` of it, decide
+ * where test orders go, so a test outside them must not reach the shop with a proof.
+ */
+export declare function requireTestOrderTag(safetyTags: readonly string[], testTags: readonly string[], title: string): void;

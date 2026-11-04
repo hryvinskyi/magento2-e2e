@@ -370,3 +370,55 @@ test.describe('a project\'s own settings', () => {
         expect(environment.variable('E2E_MISSING')).toBeUndefined();
     });
 });
+
+test.describe('test orders', () => {
+    const allowedOrigins = ['https://pay.example.org/checkout'];
+    const paying = { ...sampleConfig().environments, local: { baseUrl: () => 'https://shop.test/', paysTestOrders: true } };
+
+    test('are never paid in production, whatever its definition says', () => {
+        const environments = {
+            ...sampleConfig().environments,
+            production: { baseUrl: () => 'https://www.example.com/', production: true, paysTestOrders: true },
+        };
+
+        expect(environmentOf({ E2E_ENV: 'production' }, { environments }).testOrderReach()).toBe('payment-window');
+    });
+
+    test('are never paid on a run pointed at the live shop, whatever its environment says', () => {
+        expect(environmentOf({ E2E_BASE_URL_MAIN: 'https://www.example.com/' }, { environments: paying }).testOrderReach())
+            .toBe('payment-window');
+    });
+
+    test('are paid on a staging site on a subdomain of the live shop that says so', () => {
+        const environments = {
+            ...sampleConfig().environments,
+            staging: { baseUrl: () => 'https://staging.example.com/', paysTestOrders: true },
+        };
+        const environment = environmentOf({ E2E_ENV: 'staging' }, { environments });
+
+        expect(environment.isProductionOrigin('https://staging.example.com/')).toBe(true);
+        expect(environment.testOrderReach()).toBe('success-page');
+    });
+
+    test('are not paid where the environment does not say so: a local copy may hold live keys', () => {
+        expect(environmentOf({}).testOrderReach()).toBe('payment-window');
+    });
+
+    test('are signed with E2E_TEST_ORDER_SECRET, trimmed; an empty one reads as unset', () => {
+        expect(environmentOf({ E2E_TEST_ORDER_SECRET: ' the-secret ' }).testOrderSecret()).toBe('the-secret');
+        expect(environmentOf({ E2E_TEST_ORDER_SECRET: '   ' }).testOrderSecret()).toBeUndefined();
+        expect(environmentOf({}).testOrderSecret()).toBeUndefined();
+    });
+
+    test('are sent to the stores here and to no origin the write guard allows besides them', () => {
+        const environment = environmentOf({ E2E_ENV: 'production' }, { productionWriteGuard: { allowedOrigins } });
+
+        expect(environment.storeBaseUrls()).toEqual(['https://www.example.com/', 'https://www.example.com/second/']);
+        expect(environment.shopOrigins()).toContain('https://pay.example.org');
+    });
+
+    test('are sent to a store\'s overridden address', () => {
+        expect(environmentOf({ E2E_BASE_URL_SECOND: 'https://other.test/fr' }).storeBaseUrls())
+            .toEqual(['https://shop.test/', 'https://other.test/fr/']);
+    });
+});

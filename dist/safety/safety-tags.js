@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SafetyTagRegistry = exports.SEARCH_SERVICE_TAG = exports.MUTATING_TAG = exports.CART_TAG = exports.READONLY_TAG = void 0;
+exports.SafetyTagRegistry = exports.testOrderSafetyRule = exports.TEST_ORDER_TAG = exports.SEARCH_SERVICE_TAG = exports.MUTATING_TAG = exports.CART_TAG = exports.READONLY_TAG = void 0;
 exports.isCoreSafetyTag = isCoreSafetyTag;
 exports.declaredSafetyTag = declaredSafetyTag;
+exports.requireTestOrderTag = requireTestOrderTag;
 /** Carried by a test that only opens pages and reads; it may run against production. */
 exports.READONLY_TAG = '@readonly';
 /**
@@ -17,6 +18,25 @@ exports.MUTATING_TAG = '@mutating';
  * switches the service off (`E2E_SEARCH_SERVICE=off`). It is not a safety tag.
  */
 exports.SEARCH_SERVICE_TAG = '@search';
+/** Carried by a test that places a test order the shop recognises, and abandons it. */
+exports.TEST_ORDER_TAG = '@order';
+/**
+ * The rule a project adds to `safetyTags` to place test orders. It runs on production, where a test
+ * order goes no further than the payment window; without the secret it is skipped, never placed as
+ * an ordinary order, and on the live shop it also needs the project's `productionWriteGuard`, which
+ * keeps the payment window and every tracker of the page from receiving a write from the test.
+ */
+exports.testOrderSafetyRule = {
+    onProduction: true,
+    refusal: environment => {
+        if (environment.testOrderSecret() === undefined) {
+            return `${exports.TEST_ORDER_TAG} tests run only with E2E_TEST_ORDER_SECRET set`;
+        }
+        return environment.targetsProduction() && !environment.guardsWrites()
+            ? `${exports.TEST_ORDER_TAG} tests run against the live shop only with productionWriteGuard set`
+            : undefined;
+    },
+};
 /** The three tags every project has; a project adds its own beside them and never redefines these. */
 const CORE_RULES = new Map([
     [exports.READONLY_TAG, { onProduction: true }],
@@ -81,4 +101,18 @@ function declaredSafetyTag(safetyTags, testTags, title) {
             + `"${title}" declares ${declared.length > 0 ? declared.join(', ') : 'none'}.`);
     }
     return tag;
+}
+/**
+ * Refuses a test that may not place test orders, naming it by its `title`: one without the tag, and one
+ * in a project that did not register it. The tag's own rule, and a run's `--grep-invert` of it, decide
+ * where test orders go, so a test outside them must not reach the shop with a proof.
+ */
+function requireTestOrderTag(safetyTags, testTags, title) {
+    if (!testTags.includes(exports.TEST_ORDER_TAG)) {
+        throw new Error(`The testOrders fixture is for tests tagged ${exports.TEST_ORDER_TAG}; "${title}" is not.`);
+    }
+    if (!safetyTags.includes(exports.TEST_ORDER_TAG)) {
+        throw new Error(`The testOrders fixture needs ${exports.TEST_ORDER_TAG} in the project's safetyTags, with testOrderSafetyRule; `
+            + `"${title}" runs without it.`);
+    }
 }

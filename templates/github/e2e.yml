@@ -25,6 +25,10 @@ name: E2E
 #                                                the report is published
 #            E2E_SMTP_HOST, E2E_SMTP_PORT, E2E_SMTP_USERNAME, E2E_SMTP_PASSWORD
 #                                                the summary e-mail; unset, nothing is sent
+#            E2E_TEST_ORDER_SECRET_STAGING, E2E_TEST_ORDER_SECRET_PRODUCTION
+#                                                the secret the shop recognises test orders by (@order tests),
+#                                                the value of test_order/proof_secret in that environment's
+#                                                env.php; unset, that environment skips them
 #            DEPLOY_PRODUCTION_URL               the address that starts the production deployment once staging
 #                                                is green; unset, the promote job does nothing
 #   variables  CLOUDFLARE_ACCOUNT_ID, E2E_PAGES_PROJECT   where the shared report is published
@@ -63,6 +67,9 @@ env:
   E2E_ENV: ${{ github.event.client_payload.environment || inputs.environment || 'production' }}
   # A deployment is answered with the smoke set; a nightly or manual run takes everything allowed.
   E2E_GREP: ${{ github.event_name == 'repository_dispatch' && '@smoke' || inputs.grep || '' }}
+  # Test orders (`@order`, which also carry `@smoke`) are placed after a deployment only: never in the
+  # nightly run, and in a manual run only when its pattern names `@order`.
+  E2E_GREP_INVERT: ${{ github.event_name != 'repository_dispatch' && !contains(inputs.grep || '', '@order') && '@order' || '' }}
   # Every run here is read outside the team: each test keeps its video and screenshots, and the
   # results feed the shared report and the summary e-mail.
   E2E_EVIDENCE: '1'
@@ -74,7 +81,8 @@ jobs:
   test:
     name: Playwright (${{ github.event.client_payload.environment || inputs.environment || 'production' }})
     runs-on: ubuntu-latest
-    # A job that times out publishes no report and sends no e-mail: keep the limit above the longest run.
+    # A job that times out publishes no report and sends no e-mail: keep the limit above the longest run,
+    # the worst post-deployment run included, where every test order goes as far as its environment lets it.
     timeout-minutes: 60
     defaults:
       run:
@@ -122,7 +130,11 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       - name: Run tests
-        run: npx playwright test ${E2E_GREP:+--grep "$E2E_GREP"}
+        env:
+          # Each environment gets its own secret and any other environment none, so its `@order` tests
+          # are skipped. Only this step receives it: it signs requests and is never printed.
+          E2E_TEST_ORDER_SECRET: ${{ env.E2E_ENV == 'staging' && secrets.E2E_TEST_ORDER_SECRET_STAGING || env.E2E_ENV == 'production' && secrets.E2E_TEST_ORDER_SECRET_PRODUCTION || '' }}
+        run: npx playwright test ${E2E_GREP:+--grep "$E2E_GREP"} ${E2E_GREP_INVERT:+--grep-invert "$E2E_GREP_INVERT"}
 
       # The team's copy: the Playwright report with traces, kept on GitHub.
       - uses: actions/upload-artifact@v4

@@ -15,6 +15,9 @@ import { setting, storeSettingName, switchSetting } from './variables';
  */
 export type BaseUrlResolver = (store: RegisteredStore, variables: EnvironmentVariables) => string;
 
+/** How far a test order goes: until the payment provider's window has opened, or paid up to the order confirmation. */
+export type OrderReach = 'payment-window' | 'success-page';
+
 /** One environment a project's tests run against: a local copy, a staging server, the live shop. */
 export interface EnvironmentDefinition {
     readonly baseUrl: BaseUrlResolver;
@@ -26,6 +29,12 @@ export interface EnvironmentDefinition {
     readonly searchServiceOptional?: boolean;
     /** How many workers a run against this environment uses; unset, `defineMagentoConfig()` chooses. */
     readonly workers?: number;
+    /**
+     * Whether a test order is paid here, with the provider's test card. Set it only where the shop is
+     * known to run on the provider's test keys. A run that reaches the live shop never pays, whatever
+     * this says.
+     */
+    readonly paysTestOrders?: boolean;
 }
 
 /**
@@ -76,6 +85,20 @@ export interface Environment {
     guardsWrites(): boolean;
     /** The origins a guarded run may write to: every store's here, and the guard's allowed ones. */
     shopOrigins(): ReadonlySet<string>;
+    /**
+     * Every store's base URL here, and nothing else. A test order's proof goes to these only, so unlike
+     * `shopOrigins()` this holds none of the partners a guarded run may write to.
+     */
+    storeBaseUrls(): readonly string[];
+    /** The secret a test order's proofs are made with (`E2E_TEST_ORDER_SECRET`), trimmed; an empty one reads as unset. */
+    testOrderSecret(): string | undefined;
+    /**
+     * How far a test order goes in this run: to the order confirmation only where the environment says
+     * `paysTestOrders` and the run does not target production, up to the payment window everywhere
+     * else. A local copy without the setting never pays, as it may hold live keys; a staging site on a
+     * subdomain of the live shop is not the live shop and may.
+     */
+    testOrderReach(): OrderReach;
     /** A setting of the project's own, trimmed; an empty one reads as unset. */
     variable(name: string): string | undefined;
 }
@@ -187,6 +210,18 @@ class RunEnvironment implements Environment {
             ...this.context.stores.map(store => new URL(this.baseUrl(store)).origin),
             ...allowed.map(origin => new URL(origin).origin),
         ]);
+    }
+
+    public storeBaseUrls(): readonly string[] {
+        return this.context.stores.map(store => this.baseUrl(store));
+    }
+
+    public testOrderSecret(): string | undefined {
+        return setting(this.variables, 'E2E_TEST_ORDER_SECRET');
+    }
+
+    public testOrderReach(): OrderReach {
+        return this.definition.paysTestOrders === true && !this.targetsProduction() ? 'success-page' : 'payment-window';
     }
 
     public variable(name: string): string | undefined {

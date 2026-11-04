@@ -10,11 +10,16 @@ import type { Environment } from './environment/environment';
 import type { MagentoProject } from './project/project';
 import { isMagentoProject } from './project/project';
 import type { StoreCode } from './project/stores';
-import { declaredSafetyTag, SEARCH_SERVICE_TAG } from './safety/safety-tags';
+import { declaredSafetyTag, requireTestOrderTag, SEARCH_SERVICE_TAG, TEST_ORDER_TAG } from './safety/safety-tags';
 import { blockRequests } from './storefront/blocked-requests';
 import { startFreshGuest } from './storefront/fresh-guest';
 import { Storefront } from './storefront/storefront';
 import { keepWritesOnTheShop } from './storefront/write-guard';
+import { stopUnsignedPlacements } from './test-orders/placement';
+import type { UnsignedPlacements } from './test-orders/placement';
+import { finishTestOrderRun, refuseTrace, startTestOrderRun } from './test-orders/run';
+import type { TestOrderRun } from './test-orders/run';
+import type { ShopRequests } from './test-orders/shop';
 
 /** The options of one test, set in the config's `use` or with `test.use()`. */
 export interface MagentoTestOptions {
@@ -40,6 +45,18 @@ export interface MagentoTestFixtures {
      * the protections the fixtures install.
      */
     freshGuest: () => Promise<void>;
+    /**
+     * The test orders of this test: the shop has recognised the run, and every cart the test records is
+     * abandoned after it unless the test did so itself, also after a failure or a timeout. Only a test
+     * tagged `@order`, in a project that registered the tag, may ask for it, and only with its trace off.
+     */
+    testOrders: TestOrderRun;
+    /**
+     * How `testOrders` reaches the shop's REST API: the page's request client, which shares the browser
+     * context's cookies, HTTP credentials and certificate settings. A project overrides it with
+     * `test.extend` where the shop's firewall refuses that client.
+     */
+    shopRequests: ShopRequests;
     /** Enforces the safety tag of every test; never requested by name. */
     safetyGuard: undefined;
     /** Skips a test that needs the search service where it is switched off; never requested by name. */
@@ -54,10 +71,10 @@ export interface MagentoWorkerFixtures {
 /**
  * Playwright's `test`, with the project's stores, environment and protections: every test declares
  * exactly one safety tag and is skipped where that tag may not run, the `context` fixture aborts the
- * project's blocked requests and keeps a guarded run's writes on the shop, and the `page` fixture
- * installs the project's page guards before the test sees it. A page the test opens in that context
- * has what the context gives it but none of the page guards; a context the test opens itself has
- * nothing of this.
+ * project's blocked requests, keeps a guarded run's writes on the shop and stops every order placement
+ * of an `@order` test that was not signed, and the `page` fixture installs the project's page guards
+ * before the test sees it. A page the test opens in that context has what the context gives it but
+ * none of the page guards; a context the test opens itself has nothing of this.
  */
 export const test: TestType<
     PlaywrightTestArgs & PlaywrightTestOptions & MagentoTestOptions & MagentoTestFixtures,
@@ -84,14 +101,20 @@ export const test: TestType<
         await use(block ? 'block' : serviceWorkers);
     },
 
-    context: async ({ context, magentoProject, environment }, use) => {
+    context: async ({ context, magentoProject, environment }, use, testInfo) => {
         await blockRequests(context, projectOf(magentoProject).blockedRequests);
 
         if (environment.guardsWrites()) {
             await keepWritesOnTheShop(context, environment.shopOrigins());
         }
 
+        const unsigned = testInfo.tags.includes(TEST_ORDER_TAG) ? await stopUnsignedPlacements(context) : undefined;
+
         await use(context);
+
+        if (unsigned !== undefined) {
+            refuseUnsignedPlacements(unsigned);
+        }
     },
 
     page: async ({ page, magentoProject }, use) => {
@@ -118,6 +141,23 @@ export const test: TestType<
 
     freshGuest: async ({ storefront }, use) => {
         await use(() => startFreshGuest(storefront));
+    },
+
+    shopRequests: async ({ page }, use) => {
+        await use(page.request);
+    },
+
+    // A fixture, not a `finally` in the test: Playwright tears a fixture down after a failed and after a
+    // timed-out test. It depends on the storefront's page and on the client, so it is torn down before
+    // either is. The safety guard runs first, so a test skipped there never reaches the shop.
+    testOrders: async ({ storefront, shopRequests, environment, magentoProject, trace }, use, testInfo) => {
+        requireTestOrderTag(projectOf(magentoProject).safetyTags(), testInfo.tags, testInfo.title);
+        refuseTrace(trace, testInfo.title);
+
+        const run = await startTestOrderRun({ storefront, requests: shopRequests, environment });
+
+        await use(run);
+        await finishTestOrderRun(run, testInfo);
     },
 
     safetyGuard: [
@@ -172,4 +212,15 @@ function projectOf(value: MagentoProject | undefined): MagentoProject {
     }
 
     return value;
+}
+
+/** Fails a test that sent a placement without signing it: the page may have swallowed the aborted request. */
+function refuseUnsignedPlacements(unsigned: UnsignedPlacements): void {
+    const stopped = unsigned.stopped();
+
+    if (stopped.length > 0) {
+        throw new Error(
+            `An ${TEST_ORDER_TAG} test presses pay only after signTestOrderPlacements(); stopped in the browser: ${stopped.join(', ')}.`,
+        );
+    }
 }

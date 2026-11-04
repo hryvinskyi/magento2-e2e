@@ -6,6 +6,7 @@ export type {
     Environment,
     EnvironmentDefinition,
     HttpCredentials,
+    OrderReach,
     ProductionWriteGuard,
 } from './environment/environment';
 
@@ -20,7 +21,14 @@ export type {
 export { defineProject, isMagentoProject } from './project/project';
 
 export type { SafetyTagRule } from './safety/safety-tags';
-export { CART_TAG, MUTATING_TAG, READONLY_TAG, SEARCH_SERVICE_TAG } from './safety/safety-tags';
+export {
+    CART_TAG,
+    MUTATING_TAG,
+    READONLY_TAG,
+    SEARCH_SERVICE_TAG,
+    TEST_ORDER_TAG,
+    testOrderSafetyRule,
+} from './safety/safety-tags';
 
 export { perStoreValue } from './stores/per-store-value';
 
@@ -49,6 +57,32 @@ export type {
     TestInfo,
 } from './fixtures';
 export { expect, test } from './fixtures';
+
+export type { TestOrderAction, UnixClock } from './test-orders/proof';
+export { RECOGNITION_SUBJECT, signTestOrderProof, systemClock, TEST_ORDER_PROOF_HEADER, TestOrderProofs } from './test-orders/proof';
+export type {
+    AbandonedTestOrder,
+    Abandonment,
+    Recognition,
+    ShopAnswer,
+    ShopRequestOptions,
+    ShopRequests,
+    TestOrderAbandoner,
+} from './test-orders/shop';
+export { parseAbandonedTestOrder, TestOrderContractError, TestOrders } from './test-orders/shop';
+export type { LeftoverCart } from './test-orders/carts';
+export { TestOrderCarts } from './test-orders/carts';
+export type {
+    CaughtRequest,
+    PlacedTestOrder,
+    PlacementSigner,
+    PlacementVerdict,
+    SignedPlacements,
+    TestOrderPlacementTerms,
+} from './test-orders/placement';
+export { judgePlacement, signTestOrderPlacements } from './test-orders/placement';
+export type { TestOrderRun } from './test-orders/run';
+export { describeAbandonment } from './test-orders/run';
 
 export { evidence, keepsEvidence } from './evidence';
 export { tabToNextControl } from './keyboard';

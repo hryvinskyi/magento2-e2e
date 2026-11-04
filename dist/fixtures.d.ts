@@ -3,6 +3,8 @@ import type { Environment } from './environment/environment';
 import type { MagentoProject } from './project/project';
 import type { StoreCode } from './project/stores';
 import { Storefront } from './storefront/storefront';
+import type { TestOrderRun } from './test-orders/run';
+import type { ShopRequests } from './test-orders/shop';
 /** The options of one test, set in the config's `use` or with `test.use()`. */
 export interface MagentoTestOptions {
     /** The store view the `storefront` fixture opens; unset, the project's default store. */
@@ -25,6 +27,18 @@ export interface MagentoTestFixtures {
      * the protections the fixtures install.
      */
     freshGuest: () => Promise<void>;
+    /**
+     * The test orders of this test: the shop has recognised the run, and every cart the test records is
+     * abandoned after it unless the test did so itself, also after a failure or a timeout. Only a test
+     * tagged `@order`, in a project that registered the tag, may ask for it, and only with its trace off.
+     */
+    testOrders: TestOrderRun;
+    /**
+     * How `testOrders` reaches the shop's REST API: the page's request client, which shares the browser
+     * context's cookies, HTTP credentials and certificate settings. A project overrides it with
+     * `test.extend` where the shop's firewall refuses that client.
+     */
+    shopRequests: ShopRequests;
     /** Enforces the safety tag of every test; never requested by name. */
     safetyGuard: undefined;
     /** Skips a test that needs the search service where it is switched off; never requested by name. */
@@ -37,10 +51,10 @@ export interface MagentoWorkerFixtures {
 /**
  * Playwright's `test`, with the project's stores, environment and protections: every test declares
  * exactly one safety tag and is skipped where that tag may not run, the `context` fixture aborts the
- * project's blocked requests and keeps a guarded run's writes on the shop, and the `page` fixture
- * installs the project's page guards before the test sees it. A page the test opens in that context
- * has what the context gives it but none of the page guards; a context the test opens itself has
- * nothing of this.
+ * project's blocked requests, keeps a guarded run's writes on the shop and stops every order placement
+ * of an `@order` test that was not signed, and the `page` fixture installs the project's page guards
+ * before the test sees it. A page the test opens in that context has what the context gives it but
+ * none of the page guards; a context the test opens itself has nothing of this.
  */
 export declare const test: TestType<PlaywrightTestArgs & PlaywrightTestOptions & MagentoTestOptions & MagentoTestFixtures, PlaywrightWorkerArgs & PlaywrightWorkerOptions & MagentoWorkerOptions & MagentoWorkerFixtures>;
 export { expect } from '@playwright/test';

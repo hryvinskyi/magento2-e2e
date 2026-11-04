@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import * as entry from '../../src/index';
 
-test('the public entry exports the project, environment, safety-tag, per-store, module, browser and config functions', () => {
+test('the public entry exports the project, environment, safety-tag, per-store, module, browser, test-order and config functions', () => {
     expect(Object.keys(entry).sort()).toEqual([
         'Arrivals',
         'CART_TAG',
@@ -9,28 +9,42 @@ test('the public entry exports the project, environment, safety-tag, per-store, 
         'DEFAULT_DEVICES',
         'MUTATING_TAG',
         'READONLY_TAG',
+        'RECOGNITION_SUBJECT',
         'RequestsInFlight',
         'SEARCH_SERVICE_TAG',
         'Storefront',
+        'TEST_ORDER_PROOF_HEADER',
+        'TEST_ORDER_TAG',
+        'TestOrderCarts',
+        'TestOrderContractError',
+        'TestOrderProofs',
+        'TestOrders',
         'blockedHosts',
         'clickInside',
         'consentCookie',
         'defineMagentoConfig',
         'defineProject',
+        'describeAbandonment',
         'dismissOnSight',
         'enabledModules',
         'evidence',
         'expect',
         'isMagentoProject',
+        'judgePlacement',
         'keepsEvidence',
         'loadAmdModule',
         'loadMagentoJQuery',
         'moduleTests',
         'pageModule',
+        'parseAbandonedTestOrder',
         'perStoreValue',
         'sessionStorageFlag',
+        'signTestOrderPlacements',
+        'signTestOrderProof',
+        'systemClock',
         'tabToNextControl',
         'test',
+        'testOrderSafetyRule',
     ]);
 });
 

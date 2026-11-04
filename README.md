@@ -13,6 +13,8 @@ parts every Magento end-to-end suite ends up rebuilding into one tested package:
 - **storefront mechanics** shops share: consent recorded before the first visit, page guards, blocked
   requests, deferred assets, an optional guard that keeps a production run's writes on the shop's own
   origins;
+- **test orders**: real orders a shop with `hryvinskyi/magento2-test-order` recognises and ends again, so a
+  run can go through the whole checkout without an ordinary order being placed;
 - Node loaders that run a module's **AMD script** or the shop's **jQuery** without a browser;
 - **CI tooling**: a workflow, a deployment hook, a shared report behind a login, and a summary e-mail.
 
@@ -27,7 +29,7 @@ has exactly one copy of the runner), TypeScript 5.x.
 
 ```
 echo 'allow-git=root' >> .npmrc
-npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.2"
+npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.1.0"
 ```
 
 npm 12 refuses git dependencies unless the project opts in, which that line in `.npmrc` does; earlier
@@ -131,9 +133,10 @@ scripts your pages hold back until the first interaction. `storefront.applyDefer
 `storefront.runDeferredScripts()` release them, so an assertion about how something looks, or about
 whether a script ran, is read from a page that has finished loading.
 
-**Safety tags** are described below; `safetyTags: { '@order': { onProduction: false, refusal } }` adds
-your own beside the core three. `refusal(environment)` returns the reason a tag may not run in this run at
-all (for example, it needs a secret the run was not given), or nothing.
+**Safety tags** are described below; `safetyTags: { '@order': testOrderSafetyRule }` adds the package's
+rule for test orders beside the core three, and `{ '@seeded': { onProduction: false, refusal } }` a tag of
+your own. `refusal(environment)` returns the reason a tag may not run in this run at all (for example, it
+needs a secret the run was not given), or nothing.
 
 **The write guard** (`productionWriteGuard: {}`, optionally `{ allowedOrigins: [...] }`) keeps a run
 against the live shop from sending data anywhere but the shop. A run is guarded when
@@ -279,8 +282,8 @@ test('the French home page names the shop', { tag: READONLY_TAG }, async ({ stor
 
 Fixtures: `storefront` (the store `storeCode` picks, the project's default when unset), `storefrontOf(code)`
 (any other store on the same page, to compare two stores), `freshGuest()` (starts over as a new guest on
-the same page and the same guarded context), `environment` (the run's environment), and the automatic
-`safetyGuard` and `searchServiceGuard`. `storefront.open(path)` and `storefront.url(path)` take a path
+the same page and the same guarded context), `environment` (the run's environment), `testOrders` (see *Test orders*), and the
+automatic `safetyGuard` and `searchServiceGuard`. `storefront.open(path)` and `storefront.url(path)` take a path
 relative to the store's base URL, so a store below a path keeps working.
 
 `evidence('what the reader sees', pageOrLocator)` attaches a named screenshot of the moment a rule held
@@ -302,12 +305,112 @@ one.
 | `@readonly` | open pages, read | yes |
 | `@cart` | create a guest cart, walk the checkout up to the pay button | yes |
 | `@mutating` | anything that persists: place an order, register or log in a customer, submit a form | never |
+| `@order` | place a test order the shop recognises, and abandon it; a project opts in with `testOrderSafetyRule` | up to the payment window, with `productionWriteGuard` |
 
 Your project adds tags (`safetyTags` in the definition) beside these; the project's tag may also carry a
-refusal, for example one that refuses an `@order` tag in an environment that has no secret to sign
-requests with. `@search` is not a safety tag: it marks a test that needs the shop's search service, and
+refusal, as `testOrderSafetyRule` does: it refuses `@order` in a run that has no secret to sign requests
+with. `@search` is not a safety tag: it marks a test that needs the shop's search service, and
 the test is skipped where the run says `E2E_SEARCH_SERVICE=off`. `@mobile` and `@mobile-only` choose the
 devices a test runs on. Any other tag (`@smoke`) is yours to use with `--grep`.
+
+## Test orders
+
+A test order is a real order the shop recognises as a test, placed by a test that ends it again. It lets a
+run go through the real checkout, on the live shop too, up to the payment window. It needs the Magento
+module `hryvinskyi/magento2-test-order` in the shop. Recognising an order is all that module does for your
+integrations: each of them has to opt out, and a shop that opts nothing out gets orders they act on, so
+read its README first.
+
+**Adding the tag.** `@order` is not one of the core tags. A project adds it, and on the live shop it also
+needs the write guard, which keeps the payment window and every tracker of the page from receiving a write
+from the test:
+
+```ts
+import { defineProject, TEST_ORDER_TAG, testOrderSafetyRule } from '@hryvinskyi/magento2-e2e';
+
+export const project = defineProject({
+    // ...
+    safetyTags: { [TEST_ORDER_TAG]: testOrderSafetyRule },
+    productionWriteGuard: {},
+});
+```
+
+An `@order` test is skipped without the secret, and on a run that targets the live shop it is skipped
+without `productionWriteGuard`. A test without the tag that asks for the `testOrders` fixture fails before
+anything reaches the shop, and so does a test in a project that did not add the tag.
+
+**The secret.** `E2E_TEST_ORDER_SECRET` holds the value of `test_order/proof_secret` in the `env.php` of the
+environment the run targets, at least 32 bytes long. Give each environment its own: whoever holds it can
+place orders the shop's integrations ignore, and cancel them. The workflow template maps one secret to each
+environment, and keeps `@order` out of the nightly run. Tag `@order` tests `@smoke` as well to run them
+after a deployment.
+
+**How far an order goes.** `testOrders.reach` is `payment-window` or `success-page`. It is `success-page`
+only where the environment says `paysTestOrders: true` and the run does not target the live shop, so set
+that only where the shop is known to run on the provider's test keys. A test honours `testOrders.reach`
+itself: the package has no payment page, so nothing refuses a test that pays anyway.
+
+**A test.** Page objects are yours, so this one assumes a `checkout` of your project:
+
+```ts
+import { expect, signTestOrderPlacements, TEST_ORDER_TAG, test } from '@hryvinskyi/magento2-e2e';
+
+test.use({ trace: 'off' });
+
+test('a guest can buy by card', { tag: [TEST_ORDER_TAG, '@smoke'] }, async ({ page, testOrders }) => {
+    const checkout = await openCheckoutWithOneProduct(page);
+    const cart = await checkout.guestCartId();
+
+    testOrders.carts.record(cart);
+
+    const placements = await signTestOrderPlacements(page, testOrders.placementTerms(cart), /\/payment\/start/);
+
+    try {
+        await checkout.pressPay();
+        await placements.placedOrder();
+    } finally {
+        placements.stopWatching();
+    }
+
+    expect((await testOrders.carts.abandon(cart)).kind).toBe('abandoned');
+});
+```
+
+The order of those lines matters:
+
+- The cart is recorded before the pay button is pressed, because the shop may create the order even when
+  its answer never reaches the test. The signer refuses a cart that was not recorded.
+- `signTestOrderPlacements()` comes before the press. It signs the one placement the terms allow and stops
+  every other REST and GraphQL placement, which rejects `placedOrder()`. A placement no signing route saw is
+  stopped too, and fails the test at its end, also when the page swallows the aborted request. Both cover a
+  write to a cart's `payment-information` or `order` address and a GraphQL mutation that places or completes
+  an order.
+- `placedOrder()` resolves once the shop has answered the page's navigation to the address you gave, and
+  rejects after 30 s without it; `deadlineMs` in the terms changes that. A script, a preload or a frame inside
+  the page at a matching address does not count. The order is abandoned only after that, so no payment session
+  is opened for an order already ended.
+- `abandon()` answers `abandoned` only when every order of the cart ended. A cart with an order past cancelling
+  answers `still-open` with the state it stays in, and fails the test at its end even if the test ignored the
+  answer: it stays in the shop, and the shop's own clean-up will not end it.
+- Whatever the test leaves is abandoned after it by the fixture, after a failure or a timeout too, and noted
+  in the report. A cart that cannot be abandoned fails the test; the shop's own clean-up ends it later.
+
+**The masked cart id** is `window.checkoutConfig.quoteData.entity_id` on a stock checkout. It is a number for
+a signed-in customer's cart, and only a guest cart's placement is signed.
+
+**A side effect in the placement.** Nothing stops what a checkout carries in the placement itself, such as a
+newsletter choice, unless the project says so. `testOrders.placementTerms(cart, refusal)` takes a function
+that reads the JSON body of the placement and returns the reason to stop it, or nothing.
+
+**Traces.** A trace records every request header, the proofs among them, so the `testOrders` fixture refuses
+a test whose trace is not off, before it asks the shop anything. A file of `@order` tests sets
+`test.use({ trace: 'off' })` at its top level, as Playwright takes no trace setting inside a `describe`.
+Screenshots, videos and evidence stay.
+
+**The shop's challenge.** `testOrders` talks to the shop through Playwright's API client. A shop whose
+firewall challenges that client fails at the recognition probe, with the shop's answer, and nothing is
+placed. A project whose firewall refuses that client overrides the `shopRequests` fixture with `test.extend`,
+and the run's proofs go through the client it gives.
 
 ## Environment variables
 
@@ -319,6 +422,7 @@ devices a test runs on. Any other tag (`@smoke`) is yours to use with `--grep`.
 | `E2E_USER_AGENT_SUFFIX` | appended to the browser's user agent; wins over the project's `userAgentSuffix` option; nothing is appended when neither is set |
 | `E2E_SEARCH_SERVICE` | `on` (default) or `off`; `off` is accepted only where the environment is `searchServiceOptional` |
 | `E2E_PREFLIGHT` | `on` (default) or `off`; `off` skips the check that the default store answers |
+| `E2E_TEST_ORDER_SECRET` | the secret test orders are signed with, one per environment; unset, `@order` tests are skipped |
 | `E2E_EVIDENCE` | `1` keeps every test's video and screenshots and writes the report results |
 | `E2E_WEBKIT` | any value also runs Safari's engine |
 | `E2E_<NAME>_<STORE CODE>` | replaces a value recorded with `perStoreValue(NAME, ...)` |
@@ -405,7 +509,7 @@ address. The package ships no token of its own.
 Move to a release with one command that names its tag:
 
 ```
-npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.2"
+npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.1.0"
 ```
 
 Editing the tag in `package.json` is not enough: npm 10 quietly keeps the locked commit, and npm 11 and 12

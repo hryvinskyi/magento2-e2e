@@ -5,6 +5,7 @@ exports.default = preflight;
 exports.checkStorefront = checkStorefront;
 exports.projectInConfig = projectInConfig;
 const test_1 = require("@playwright/test");
+const navigation_1 = require("../navigation");
 const project_1 = require("../project/project");
 /** Three tries, ten seconds apart: long enough for a freshly deployed storefront to warm its caches. */
 exports.DEFAULT_SCHEDULE = Object.freeze({
@@ -84,7 +85,7 @@ function projectInConfig(projects) {
 async function askForTheDocumentAlone(page) {
     await page.route('**/*', async (route) => {
         const request = route.request();
-        await (request.isNavigationRequest() && request.frame() === page.mainFrame() ? route.fallback() : route.abort());
+        await ((0, navigation_1.navigatesThePage)(request, page) ? route.fallback() : route.abort());
     });
 }
 /**

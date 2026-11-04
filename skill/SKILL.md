@@ -99,11 +99,18 @@ also when every test of the file is then skipped: nothing that writes belongs in
 | `@readonly` | open pages, read | yes |
 | `@cart` | create a **guest** cart, walk the checkout up to the pay button | yes |
 | `@mutating` | anything that persists: place an order, register or log in a customer, subscribe to a newsletter, submit a form, write a review, redeem a coupon | never |
+| `@order` | place a test order the shop recognises, and abandon it; only in a project that adds `testOrderSafetyRule` to its `safetyTags` | up to the payment window, with the project's `productionWriteGuard` |
 
 A project may add tags of its own, each with its rule. Never press the pay button outside a `@mutating`
 test: it places a real order with a real payment provider. A `@mutating` test that presses it stops the
 order placement in the browser first, so nothing is created even where the database carries live payment
-keys. Never type a real person's e-mail address anywhere; test addresses use a domain that cannot deliver
+keys. The one exception is an `@order` test: it presses the button only after `signTestOrderPlacements()`,
+for a cart it has recorded with `testOrders.carts.record()`. The package has no page object that presses it
+for the test, and a placement nobody signed is stopped in the browser and fails the test. The file of an
+`@order` test sets `test.use({ trace: 'off' })` at its top level, or the fixture refuses the test. The test
+checks that `testOrders.carts.abandon()` answers `abandoned`: `still-open` means the shop could not cancel
+the order, which stays in the shop and fails the test at its end. Never type a real
+person's e-mail address anywhere; test addresses use a domain that cannot deliver
 (`e2e+<something>@shop.test`).
 
 `@search` marks a test that needs the shop's search service; it is skipped where the run says

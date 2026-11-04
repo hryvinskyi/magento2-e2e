@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0
+
+- Test orders, for a shop with the Magento module `hryvinskyi/magento2-test-order`: real orders the shop
+  recognises and a test ends again. `@order` is opt-in through `testOrderSafetyRule` in `safetyTags`, and it
+  needs `E2E_TEST_ORDER_SECRET`; on the live shop also `productionWriteGuard`.
+- The `testOrders` fixture asks the shop whether it recognises the run before anything is placed, and
+  abandons what the test left after it. Only a test tagged `@order` with its trace off may ask for it. An
+  order the shop could not cancel comes back as `still-open` and fails the test: it stays in the shop.
+- The `shopRequests` fixture is how `testOrders` reaches the shop. A project whose firewall refuses
+  Playwright's API client overrides it with `test.extend`.
+- `signTestOrderPlacements()` signs the one placement a test order may go through and stops every other REST
+  and GraphQL placement, which rejects `placedOrder()`. A placement of an `@order` test that no signing route
+  saw is stopped in the browser and fails the test at its end.
+- `paysTestOrders` on an environment, `Environment.testOrderReach()`, `testOrderSecret()` and
+  `storeBaseUrls()`. A run that reaches the live shop never pays.
+- The workflow template gives each environment its own secret and keeps `@order` out of the nightly run.
+
 ## 1.0.2
 
 - The preflight opens the page in Chromium, for the document alone, instead of asking with Node's HTTP

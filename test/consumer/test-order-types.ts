@@ -1,0 +1,45 @@
+import type {
+    AbandonedTestOrder,
+    Abandonment,
+    CaughtRequest,
+    LeftoverCart,
+    OrderReach,
+    PlacedTestOrder,
+    PlacementSigner,
+    PlacementVerdict,
+    Recognition,
+    ShopAnswer,
+    ShopRequestOptions,
+    ShopRequests,
+    SignedPlacements,
+    TestOrderAbandoner,
+    TestOrderAction,
+    TestOrderPlacementTerms,
+    TestOrderRun,
+    UnixClock,
+} from '@hryvinskyi/magento2-e2e';
+
+/**
+ * Every test-order type of the public entry, named once: this file compiles, against the sources and
+ * against the built declarations, only while the entry exports them all.
+ */
+export type TestOrderTypes = [
+    AbandonedTestOrder,
+    Abandonment,
+    CaughtRequest,
+    LeftoverCart,
+    OrderReach,
+    PlacedTestOrder,
+    PlacementSigner,
+    PlacementVerdict,
+    Recognition,
+    ShopAnswer,
+    ShopRequestOptions,
+    ShopRequests,
+    SignedPlacements,
+    TestOrderAbandoner,
+    TestOrderAction,
+    TestOrderPlacementTerms,
+    TestOrderRun,
+    UnixClock,
+];

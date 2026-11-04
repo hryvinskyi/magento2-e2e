@@ -29,6 +29,28 @@ export interface SafetyTagRule {
     readonly refusal?: (environment: Environment) => string | undefined;
 }
 
+/** Carried by a test that places a test order the shop recognises, and abandons it. */
+export const TEST_ORDER_TAG = '@order';
+
+/**
+ * The rule a project adds to `safetyTags` to place test orders. It runs on production, where a test
+ * order goes no further than the payment window; without the secret it is skipped, never placed as
+ * an ordinary order, and on the live shop it also needs the project's `productionWriteGuard`, which
+ * keeps the payment window and every tracker of the page from receiving a write from the test.
+ */
+export const testOrderSafetyRule: SafetyTagRule = {
+    onProduction: true,
+    refusal: environment => {
+        if (environment.testOrderSecret() === undefined) {
+            return `${TEST_ORDER_TAG} tests run only with E2E_TEST_ORDER_SECRET set`;
+        }
+
+        return environment.targetsProduction() && !environment.guardsWrites()
+            ? `${TEST_ORDER_TAG} tests run against the live shop only with productionWriteGuard set`
+            : undefined;
+    },
+};
+
 /** The three tags every project has; a project adds its own beside them and never redefines these. */
 const CORE_RULES: ReadonlyMap<string, SafetyTagRule> = new Map<string, SafetyTagRule>([
     [READONLY_TAG, { onProduction: true }],
@@ -109,4 +131,22 @@ export function declaredSafetyTag(safetyTags: readonly string[], testTags: reado
     }
 
     return tag;
+}
+
+/**
+ * Refuses a test that may not place test orders, naming it by its `title`: one without the tag, and one
+ * in a project that did not register it. The tag's own rule, and a run's `--grep-invert` of it, decide
+ * where test orders go, so a test outside them must not reach the shop with a proof.
+ */
+export function requireTestOrderTag(safetyTags: readonly string[], testTags: readonly string[], title: string): void {
+    if (!testTags.includes(TEST_ORDER_TAG)) {
+        throw new Error(`The testOrders fixture is for tests tagged ${TEST_ORDER_TAG}; "${title}" is not.`);
+    }
+
+    if (!safetyTags.includes(TEST_ORDER_TAG)) {
+        throw new Error(
+            `The testOrders fixture needs ${TEST_ORDER_TAG} in the project's safetyTags, with testOrderSafetyRule; `
+            + `"${title}" runs without it.`,
+        );
+    }
 }
