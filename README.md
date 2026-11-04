@@ -401,7 +401,16 @@ address. The package ships no token of its own.
 
 ## Upgrading
 
-Pin the tag in your project's `package.json` (`#v1.0.1`) and change it to move to a release. Read
+Move to a release with one command that names its tag:
+
+```
+npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.1"
+```
+
+Editing the tag in `package.json` is not enough: npm 10 quietly keeps the locked commit, and npm 11 and 12
+refuse, because a dependency whose tag differs from the lockfile's no longer counts as the project's own
+under `allow-git=root`. `--allow-git=all` holds for that one command; `npm ci` afterwards needs nothing
+more than the line in `.npmrc`. Read
 [CHANGELOG.md](CHANGELOG.md) first; the package follows semantic versioning, and its public API is what
 `src/index.ts` exports. After upgrading run `npm install`, then your project's `typecheck` (the declared
 types are the contract) and one run against a local copy.
