@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1
+
+- The starter project holds `npmrc` (rename it to `.npmrc`) with `allow-git=root`, and the README says why:
+  npm 12 refuses git dependencies unless a project opts in, so an install from the tag failed there.
+
 ## 1.0.0
 
 First release.

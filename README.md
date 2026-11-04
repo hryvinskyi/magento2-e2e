@@ -26,10 +26,12 @@ has exactly one copy of the runner), TypeScript 5.x.
 ## Install
 
 ```
-npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.0"
+echo 'allow-git=root' >> .npmrc
+npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.0.1"
 ```
 
-The package is installed from its git tag, or from a tarball made with `npm run compile && npm pack`. A tag
+npm 12 refuses git dependencies unless the project opts in, which that line in `.npmrc` does; earlier
+versions ignore it. The package is installed from its git tag, or from a tarball made with `npm run compile && npm pack`. A tag
 holds the built `dist/`, so an install builds nothing and runs no script of this package. Never install it
 with `npm link` or a `file:` directory path: the linked copy resolves `@playwright/test` from its own
 `node_modules`, and two copies of the runner refuse to load.
@@ -37,12 +39,13 @@ with `npm link` or a `file:` directory path: the linked copy resolves `@playwrig
 To start a project, copy the package's `templates/project/` (from the clone, or from
 `node_modules/@hryvinskyi/magento2-e2e/` after a first install) to `e2e/` in the root of the Magento
 installation. It holds a working `playwright.config.ts`, `src/project.ts`, `src/fixtures.ts`,
-`tsconfig.json`, `package.json`, `.env.example`, `allurerc.mjs` and `gitignore`, which npm would drop
-from the package under its real name: rename it to `.gitignore`. Then:
+`tsconfig.json`, `package.json`, `.env.example`, `allurerc.mjs`, and `gitignore` and `npmrc`, which npm
+would drop from the package under their real names: rename them to `.gitignore` and `.npmrc`. Then:
 
 ```
 cd e2e
 mv gitignore .gitignore
+mv npmrc .npmrc
 npm install
 npx playwright install chromium
 cp .env.example .env     # and set what your environment needs
@@ -398,7 +401,7 @@ address. The package ships no token of its own.
 
 ## Upgrading
 
-Pin the tag in your project's `package.json` (`#v1.0.0`) and change it to move to a release. Read
+Pin the tag in your project's `package.json` (`#v1.0.1`) and change it to move to a release. Read
 [CHANGELOG.md](CHANGELOG.md) first; the package follows semantic versioning, and its public API is what
 `src/index.ts` exports. After upgrading run `npm install`, then your project's `typecheck` (the declared
 types are the contract) and one run against a local copy.

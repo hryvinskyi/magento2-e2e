@@ -1,0 +1,2 @@
+# This package set installs from a git tag, and npm 12 refuses git dependencies unless a project opts in.
+allow-git=root

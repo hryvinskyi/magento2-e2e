@@ -135,6 +135,6 @@ test.describe('evidence', () => {
 
         await evidence('The box', page);
 
-        expect(testInfo.attachments).toEqual([]);
+        expect(testInfo.attachments).toHaveLength(0);
     });
 });
