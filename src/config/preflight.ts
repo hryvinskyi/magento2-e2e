@@ -46,6 +46,7 @@ export default async function preflight(config: FullConfig): Promise<void> {
     try {
         const page = await browser.newPage({
             ...devices['Desktop Chrome'],
+            javaScriptEnabled: false,
             ignoreHTTPSErrors: environment.ignoresHttpsErrors,
             ...(credentials === undefined ? {} : { httpCredentials: credentials }),
             userAgent: `${devices['Desktop Chrome'].userAgent} ${environment.userAgentSuffix()}`.trim(),
@@ -109,20 +110,27 @@ export function projectInConfig(projects: readonly { readonly use: object }[]): 
 
 /**
  * Lets only the page itself be fetched: nothing of what it loads is part of the question, and on the
- * live shop none of it (a tracker above all) may run for a check that is no visit.
+ * live shop none of it (a tracker above all) may run for a check that is no visit. A frame of the page
+ * is one of those things, though opening it is a navigation too.
  */
 async function askForTheDocumentAlone(page: Page): Promise<void> {
     await page.route('**/*', async route => {
-        await (route.request().isNavigationRequest() ? route.fallback() : route.abort());
+        const request = route.request();
+
+        await (request.isNavigationRequest() && request.frame() === page.mainFrame() ? route.fallback() : route.abort());
     });
 }
 
-/** Asks by opening the page; redirects are followed, a missing answer is described. */
+/**
+ * Asks by opening the page; redirects are followed, a missing answer is described. It waits for the
+ * page's `load`, which comes at once with everything else refused: a request still held by the route
+ * when the browser closes would be let go to the network.
+ */
 function pageProbe(page: Page): StorefrontProbe {
     return {
         async answer(url: string): Promise<string> {
             try {
-                const response = await page.goto(url, { timeout: REQUEST_TIMEOUT_MS, waitUntil: 'commit' });
+                const response = await page.goto(url, { timeout: REQUEST_TIMEOUT_MS, waitUntil: 'load' });
 
                 return response === null ? 'no answer' : String(response.status());
             } catch (error) {
