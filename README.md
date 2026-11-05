@@ -29,7 +29,7 @@ has exactly one copy of the runner), TypeScript 5.x.
 
 ```
 echo 'allow-git=root' >> .npmrc
-npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.1.0"
+npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.2.0"
 ```
 
 npm 12 refuses git dependencies unless the project opts in, which that line in `.npmrc` does; earlier
@@ -383,20 +383,76 @@ The order of those lines matters:
 - `signTestOrderPlacements()` comes before the press. It signs the one placement the terms allow and stops
   every other REST and GraphQL placement, which rejects `placedOrder()`. A placement no signing route saw is
   stopped too, and fails the test at its end, also when the page swallows the aborted request. Both cover a
-  write to a cart's `payment-information` or `order` address and a GraphQL mutation that places or completes
-  an order.
+  write to a cart's `payment-information` or `order` address, a write to an address the project declares
+  (*A checkout of your own*, below), and a GraphQL mutation that places or completes an order.
 - `placedOrder()` resolves once the shop has answered the page's navigation to the address you gave, and
   rejects after 30 s without it; `deadlineMs` in the terms changes that. A script, a preload or a frame inside
   the page at a matching address does not count. The order is abandoned only after that, so no payment session
   is opened for an order already ended.
-- `abandon()` answers `abandoned` only when every order of the cart ended. A cart with an order past cancelling
-  answers `still-open` with the state it stays in, and fails the test at its end even if the test ignored the
-  answer: it stays in the shop, and the shop's own clean-up will not end it.
+- `abandon()` answers `abandoned` only when every order of the cart ended: `canceled`, or `closed` for an order
+  already paid, which the shop refunds. A cart with an order the shop could not end answers `still-open` with
+  the state it stays in, and fails the test at its end even if the test ignored the answer: it stays in the
+  shop, and the shop's own clean-up will not end it.
 - Whatever the test leaves is abandoned after it by the fixture, after a failure or a timeout too, and noted
   in the report. A cart that cannot be abandoned fails the test; the shop's own clean-up ends it later.
+- A placement past its deadline cannot be called back, whichever client sent it. The runner drops the connection
+  and the browser's request stays in flight, and the shop may go on to place the order after the clean-up was
+  answered `nothing-placed`. The clean-up waits for the answer until the deadline; after that, the shop's own
+  clean-up ends such an order.
 
 **The masked cart id** is `window.checkoutConfig.quoteData.entity_id` on a stock checkout. It is a number for
-a signed-in customer's cart, and only a guest cart's placement is signed.
+a signed-in customer's cart there, and `GUEST_PAYMENT_INFORMATION`, the route of the stock checkout, names guest
+carts only. A checkout of your own may place a signed-in customer's cart under its masked id; the shop then
+decides whether that customer may hold a test cart.
+
+**A checkout of your own.** A checkout other than Magento's places an order at its own address, with the cart
+in its own place. A project declares each such address as a `PlacementRoute`, and the package names no checkout:
+
+```ts
+import { defineProject, GUEST_PAYMENT_INFORMATION } from '@hryvinskyi/magento2-e2e';
+import type { PlacementRoute } from '@hryvinskyi/magento2-e2e';
+
+const ACME_CHECKOUT: PlacementRoute = {
+    stopped: /\/acme-checkout\/place/,
+    cartOf: (path, body, storePaths) => {
+        const below = /^(.*\/)rest\/V1\/acme-checkout\/place$/.exec(path)?.[1];
+        const anchored = below === '/' || (below !== undefined && storePaths.has(below));
+
+        return anchored && typeof body.cartId === 'string' ? body.cartId : undefined;
+    },
+    outcomeOf: answer => {
+        const orderId: unknown = JSON.parse(answer);
+
+        if (typeof orderId !== 'string') {
+            throw new Error(`The checkout answered without an order id: ${answer}`);
+        }
+
+        return { kind: 'placed', orderId };
+    },
+};
+
+export const project = defineProject({
+    // ...
+    testOrderPlacements: [GUEST_PAYMENT_INFORMATION, ACME_CHECKOUT],
+});
+```
+
+- `stopped` decides what is stopped, so it stays broad: every spelling of the address. A write it does not
+  match goes to the shop unsigned, as an ordinary order.
+- `cartOf` decides what receives a proof, so it is anchored: it names the cart of a `POST` to this path, at the
+  web root or below a store's path, and nothing for anything else. It gets the path and the parsed JSON body.
+- `outcomeOf` reads the shop's accepted answer, and throws when the answer is not what the route publishes,
+  which rejects `placedOrder()`. A refused answer never reaches it.
+
+`testOrderPlacements` replaces the default, `[GUEST_PAYMENT_INFORMATION]`, so a shop with both checkouts names
+both. A placement of the stock checkout is refused when the project leaves its route out, and every write to a
+stock address or a GraphQL placement stays stopped whatever a project declares. The project's list reaches
+`stopUnsignedPlacements()` and `testOrders.placementTerms()` by itself.
+
+**A placement that creates its order after payment.** Some checkouts only start a payment, and the shop creates
+the order once it is paid. Such a route answers `{ kind: 'after-payment' }`, and `placedOrder()` then resolves
+with `orderId` null. It still waits for the page's navigation to the payment address. Read `orderId` as
+`string | null`, and end the order through the cart, as `abandon()` always does.
 
 **A side effect in the placement.** Nothing stops what a checkout carries in the placement itself, such as a
 newsletter choice, unless the project says so. `testOrders.placementTerms(cart, refusal)` takes a function
@@ -407,10 +463,37 @@ a test whose trace is not off, before it asks the shop anything. A file of `@ord
 `test.use({ trace: 'off' })` at its top level, as Playwright takes no trace setting inside a `describe`.
 Screenshots, videos and evidence stay.
 
-**The shop's challenge.** `testOrders` talks to the shop through Playwright's API client. A shop whose
-firewall challenges that client fails at the recognition probe, with the shop's answer, and nothing is
-placed. A project whose firewall refuses that client overrides the `shopRequests` fixture with `test.extend`,
-and the run's proofs go through the client it gives.
+**The shop's challenge.** By default `testOrders` talks to the shop from Node: its REST calls through
+Playwright's API client, the signed placement through `route.fetch()`. Neither follows a redirect, so a proof
+reaches the shop and nothing else. A shop whose firewall challenges those clients fails at the recognition
+probe, with the shop's answer, and nothing is placed, and so does a machine where Node cannot reach the
+address. Such a project says so once:
+
+```ts
+export const project = defineProject({
+    // ...
+    shopClient: 'browser',
+});
+```
+
+Both then go through the browser, with its session at the firewall:
+
+- The signed placement is the browser's own request, with the proof added.
+- The REST calls are sent from a page the `shopRequests` fixture opens in the test's context and closes after
+  it: `/robots.txt` at the root of the store's origin, never below a store's path, where a shop answers a 404
+  page with all its scripts. It must answer 200 and `text/plain`; anything else fails the test before any proof
+  is sent, as a proof never passes through a page that runs scripts. These calls follow no redirect either.
+
+Against `'runner'`, the placement gives up two things:
+
+- A redirect is followed, and the proof goes with it. `placedOrder()` then fails and says so, but the proof has
+  gone. A redirect's hop is neither routed nor judged.
+- The answer's body can be lost when the checkout leaves the page first. A 2xx status then resolves
+  `placedOrder()` with `orderId` null, without asking the route, and a refusal names only its status. Do not
+  rely on `orderId` with this client: end the order through the cart, as `abandon()` always does.
+
+**A client of your own.** A project overrides the `shopRequests` fixture with `test.extend`, and the run's
+proofs go through the client it gives. `shopClient` still says who sends the signed placement.
 
 ## Environment variables
 
@@ -509,7 +592,7 @@ address. The package ships no token of its own.
 Move to a release with one command that names its tag:
 
 ```
-npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.1.0"
+npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.2.0"
 ```
 
 Editing the tag in `package.json` is not enough: npm 10 quietly keeps the locked commit, and npm 11 and 12

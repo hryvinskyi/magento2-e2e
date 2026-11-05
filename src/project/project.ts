@@ -4,6 +4,9 @@ import { createEnvironment } from '../environment/environment';
 import type { EnvironmentVariables } from '../environment/variables';
 import type { SafetyTagRule } from '../safety/safety-tags';
 import { SafetyTagRegistry } from '../safety/safety-tags';
+import { GUEST_PAYMENT_INFORMATION } from '../test-orders/placement';
+import type { PlacementRoute } from '../test-orders/placement';
+import type { ShopClient } from '../test-orders/shop';
 import { ownEntry } from './own-entry';
 import { projectProblems } from './project-validation';
 import type { EnvironmentName, RegisteredStore, StoreCode, StoreMap } from './stores';
@@ -59,6 +62,19 @@ export interface ProjectConfig {
     readonly productionWriteGuard?: ProductionWriteGuard;
     /** Whether service workers are blocked; they always are while writes are guarded. Default false. */
     readonly blockServiceWorkers?: boolean;
+    /**
+     * The addresses this shop's checkouts turn a cart into an order at, for a test order to be signed
+     * and any other write there stopped. Default `[GUEST_PAYMENT_INFORMATION]`, Magento's own checkout;
+     * a list replaces it, so a shop with a checkout of its own beside Magento's names both.
+     */
+    readonly testOrderPlacements?: readonly PlacementRoute[];
+    /**
+     * Who sends what a test order sends the shop. Default `'runner'`: Node, through Playwright's API client
+     * and `route.fetch()`. `'browser'` is for a shop whose firewall answers only a browser, or a machine
+     * where Node cannot reach the address: the signed placement and the REST calls both go through the
+     * browser. `TestOrderPlacementTerms.client` says what that gives up.
+     */
+    readonly shopClient?: ShopClient;
 }
 
 /** A checked project definition, as `defineProject` returns it. */
@@ -70,6 +86,10 @@ export interface MagentoProject {
     readonly blockedRequests: readonly RegExp[];
     readonly storefrontBehaviour: StorefrontBehaviour;
     readonly blockServiceWorkers: boolean;
+    /** The addresses this shop's checkouts turn a cart into an order at. */
+    readonly testOrderPlacements: readonly PlacementRoute[];
+    /** Who sends what a test order sends the shop. */
+    readonly shopClient: ShopClient;
     /** The environment a run targets, read from these variables (`process.env` by default). */
     environment(variables?: EnvironmentVariables): Environment;
     /** The store with this code; an unknown code is refused with the known ones. */
@@ -118,6 +138,8 @@ export function defineProject(config: ProjectConfig): MagentoProject {
         blockedRequests: Object.freeze([...(config.blockedRequests ?? [])]),
         storefrontBehaviour: storefrontBehaviourOf(config),
         blockServiceWorkers: config.blockServiceWorkers ?? false,
+        testOrderPlacements: Object.freeze([...(config.testOrderPlacements ?? [GUEST_PAYMENT_INFORMATION])]),
+        shopClient: config.shopClient ?? 'runner',
         environment(variables: EnvironmentVariables = process.env): Environment {
             return createEnvironment(context, variables);
         },

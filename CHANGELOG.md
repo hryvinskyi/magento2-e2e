@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0
+
+- A project declares the addresses its checkouts place a cart at: `testOrderPlacements` in `defineProject`,
+  a list of `PlacementRoute`, by default `[GUEST_PAYMENT_INFORMATION]`, Magento's own checkout. A route says what
+  is stopped, which cart a write places, and what the shop's accepted answer means. A placement is signed only
+  when a route names the test's cart, and every other write to a route's address is stopped. The stock addresses
+  and GraphQL placements stay stopped whatever a project declares.
+- **Type change:** `PlacedTestOrder.orderId` is now `string | null`. It is null for a placement that creates its
+  order after payment; `placedOrder()` still waits for the way to payment.
+- An order that ends `closed` counts as ended: `abandon()` answers `abandoned`, as for `canceled`.
+- `TestOrderPlacementTerms.routes`, `PlacementVerdict`'s `sign` names the route, and `stopUnsignedPlacements()` takes
+  the routes. The reason a write is refused no longer says "guest cart".
+- The browser as the only client: `shopClient: 'browser'` in `defineProject`, for a shop whose firewall answers only
+  a browser or a machine where Node cannot reach the address. The default, `'runner'`, changes nothing. The signed
+  placement is then the browser's own request with the proof added (`TestOrderPlacementTerms.client`), and the REST
+  calls come from a page of the browser, `BrowserShopRequests`, opened at `/robots.txt` at the root of the store's
+  origin. Anything there but 200 and `text/plain` fails before any proof is sent.
+- With `'browser'`, a redirect of the placement is followed and the proof goes with it, which fails `placedOrder()`,
+  and an answer's body lost to the page leaving resolves `placedOrder()` with `orderId` null, without asking the
+  route. A placement that never gets an answer fails `placedOrder()` at its deadline with what the browser reported,
+  not as a placement nobody saw, and the clean-up after the test waits for that deadline before it asks the shop to
+  end the order.
+- A placement on its way holds the clean-up after the test back with either client, so a test that times out while
+  the shop is answering is not told `nothing-placed` before the order exists. The answer and its body share one
+  deadline. A placement past that deadline cannot be called back, with either client; the shop's own clean-up ends
+  an order it still places.
+
 ## 1.1.0
 
 - Test orders, for a shop with the Magento module `hryvinskyi/magento2-test-order`: real orders the shop

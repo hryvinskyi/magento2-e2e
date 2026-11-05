@@ -10,7 +10,7 @@ const proof_1 = require("./proof");
 const shop_1 = require("./shop");
 const ABANDONMENT_WORDS = {
     abandoned: (cart, { order }) => `cart ${cart}: test order ${numberOf(order)} abandoned, now ${order.state}${order.deleted ? ' and deleted' : ''}`,
-    'still-open': (cart, { order }) => `cart ${cart}: test order ${numberOf(order)} could not be cancelled and is still ${order.state}`,
+    'still-open': (cart, { order }) => `cart ${cart}: test order ${numberOf(order)} could not be ended and is still ${order.state}`,
     'nothing-placed': (cart, { reason }) => `cart ${cart}: no test order was placed from it, so there was nothing to abandon (${reason})`,
 };
 /**
@@ -31,7 +31,7 @@ function refuseTrace(trace, title) {
  * The origins and paths come from the stores alone: a proof never goes to a partner the write guard
  * lets a run write to.
  */
-async function startTestOrderRun({ storefront, requests, environment }) {
+async function startTestOrderRun({ storefront, requests, environment, routes, client }) {
     const secret = environment.testOrderSecret();
     if (secret === undefined) {
         throw new Error('A test order is placed only with E2E_TEST_ORDER_SECRET set.');
@@ -58,6 +58,11 @@ async function startTestOrderRun({ storefront, requests, environment }) {
             cart,
             shopOrigins,
             storePaths,
+            routes,
+            client,
+            awaitingAnswer: answer => {
+                carts.holdCleanUpFor(answer);
+            },
             signer: carts.placementSigner(proofs),
             ...(refusal === undefined ? {} : { refusal }),
         }),
@@ -67,7 +72,7 @@ async function startTestOrderRun({ storefront, requests, environment }) {
  * Abandons, after the test, every test order the test did not settle itself, and notes each in the
  * report. It runs after a failed test and after a timed-out one too, as the teardown of a fixture.
  * Every cart is tried; afterwards it fails when any could not be abandoned, and when the shop could not
- * cancel any: such an order stays in the shop, and a passed run must not leave one unsaid.
+ * end an order: such an order stays in the shop, and a passed run must not leave one unsaid.
  */
 async function finishTestOrderRun(run, testInfo) {
     const leftovers = await run.carts.abandonLeftovers();
@@ -96,7 +101,7 @@ function describeAbandonment(cart, abandonment) {
 function failureOf(leftover) {
     return leftover.kind === 'failed' ? [new Error((0, answers_1.reportableMessageOf)(leftover.error))] : [];
 }
-/** The reader's words for a cart whose order the shop could not cancel. */
+/** The reader's words for a cart whose order the shop could not end. */
 function stillOpenOf(leftover) {
     return leftover.kind === 'answered' && leftover.abandonment.kind === 'still-open'
         ? [describeAbandonment(leftover.cart, leftover.abandonment)]

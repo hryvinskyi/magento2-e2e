@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TestOrders = exports.TestOrderContractError = void 0;
+exports.TestOrders = exports.TestOrderContractError = exports.SHOP_CLIENTS = void 0;
 exports.parseAbandonedTestOrder = parseAbandonedTestOrder;
 const answers_1 = require("./answers");
 const proof_1 = require("./proof");
+/** Who sends what a test order sends the shop. */
+exports.SHOP_CLIENTS = ['runner', 'browser'];
 /** How long the shop may take to answer a recognition probe or to abandon a test order. */
 const DEFAULT_DEADLINE_MS = 30_000;
 /** An answer of the shop that does not have the shape its API publishes. */
@@ -16,8 +18,8 @@ class TestOrderContractError extends Error {
 exports.TestOrderContractError = TestOrderContractError;
 /** The shop's answer to abandoning when it has no test order placed from the cart. */
 const NOTHING_PLACED_STATUS = 404;
-/** The state of an order that has ended; in any other the order is still open. */
-const CANCELLED_STATE = 'canceled';
+/** The states of an order that has ended; in any other the order is still open. */
+const ENDED_STATES = new Set(['canceled', 'closed']);
 /** Reads the shop's answer to abandoning a test order: `{increment_id?, state, deleted}`. */
 function parseAbandonedTestOrder(body) {
     const parsed = (0, answers_1.jsonOf)(body);
@@ -72,12 +74,12 @@ class TestOrders {
         return { recognised: false, status: answer.status(), reason: (0, answers_1.shopReasonIn)(body) };
     }
     /**
-     * Ends the test orders placed from a guest cart: the shop cancels each — which takes back what
-     * placing it did — and deletes it when it is configured to. A cart with an order past cancelling comes
-     * back as `still-open`, with the state it stays in. A cart the shop placed no order from is answered as
-     * such, not as a failure: there is nothing to end. Call it only once the shop has
-     * sent the browser on to payment, or once the test has given up on that, so no payment session is
-     * created for an order already ended.
+     * Ends the test orders placed from a cart: the shop cancels each — which takes back what placing it
+     * did — or refunds one already paid, which closes it, and deletes it when it is configured to. A cart
+     * with an order the shop could not end comes back as `still-open`, with the state it stays in. A cart
+     * the shop placed no order from is answered as such, not as a failure: there is nothing to end. Call
+     * it only once the shop has sent the browser on to payment, or once the test has given up on that, so
+     * no payment session is created for an order already ended.
      */
     async abandon(maskedCartId) {
         const answer = await this.post(`test-orders/${encodeURIComponent(maskedCartId)}/abandon`, this.proofs.headersFor('abandon', maskedCartId));
@@ -89,7 +91,7 @@ class TestOrders {
             throw new Error(`The shop did not abandon the test order of cart ${maskedCartId} (${String(answer.status())}): ${(0, answers_1.shopReasonIn)(body)}`);
         }
         const order = parseAbandonedTestOrder(body);
-        return { kind: order.state === CANCELLED_STATE ? 'abandoned' : 'still-open', order };
+        return { kind: ENDED_STATES.has(order.state) ? 'abandoned' : 'still-open', order };
     }
     /** Sends one request; a request that fails rejects with a plain error that keeps what was sent out of the report. */
     async post(path, headers) {

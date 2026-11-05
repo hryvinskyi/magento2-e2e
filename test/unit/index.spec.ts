@@ -4,9 +4,11 @@ import * as entry from '../../src/index';
 test('the public entry exports the project, environment, safety-tag, per-store, module, browser, test-order and config functions', () => {
     expect(Object.keys(entry).sort()).toEqual([
         'Arrivals',
+        'BrowserShopRequests',
         'CART_TAG',
         'ClickReports',
         'DEFAULT_DEVICES',
+        'GUEST_PAYMENT_INFORMATION',
         'MUTATING_TAG',
         'READONLY_TAG',
         'RECOGNITION_SUBJECT',

@@ -4,10 +4,14 @@ import type { Environment } from '../../src/environment/environment';
 import { defineProject } from '../../src/project/project';
 import type { ProjectConfig } from '../../src/project/project';
 import { TestOrderCarts } from '../../src/test-orders/carts';
+import { GUEST_PAYMENT_INFORMATION } from '../../src/test-orders/placement';
+import type { PlacementRoute } from '../../src/test-orders/placement';
 import { signTestOrderProof, TEST_ORDER_PROOF_HEADER } from '../../src/test-orders/proof';
 import { describeAbandonment, finishTestOrderRun, refuseTrace, startTestOrderRun } from '../../src/test-orders/run';
 import type { TestOrderRun } from '../../src/test-orders/run';
+import { SHOP_CLIENTS } from '../../src/test-orders/shop';
 import type { ShopAnswer, ShopRequests } from '../../src/test-orders/shop';
+import { ACME_CHECKOUT } from './acme-checkout-route';
 import { sampleConfig } from './sample-project';
 
 /**
@@ -50,6 +54,8 @@ class FakeShop implements ShopRequests {
 
 const RECOGNISED = { 'test-orders/recognition': { status: 200, body: 'true' } };
 
+const ROUTES: readonly PlacementRoute[] = [GUEST_PAYMENT_INFORMATION];
+
 function environmentOf(variables: Record<string, string>, overrides: Partial<ProjectConfig> = {}): Environment {
     return defineProject(sampleConfig(overrides)).environment(variables);
 }
@@ -60,7 +66,7 @@ const storefront = {
 };
 
 function start(shop: FakeShop, variables: Record<string, string> = { E2E_TEST_ORDER_SECRET: SECRET }): Promise<TestOrderRun> {
-    return startTestOrderRun({ storefront, requests: shop, environment: environmentOf(variables) });
+    return startTestOrderRun({ storefront, requests: shop, environment: environmentOf(variables), routes: ROUTES, client: 'runner' });
 }
 
 function freshTestInfo(): Pick<TestInfo, 'annotations'> {
@@ -97,6 +103,8 @@ test.describe('starting a run of test orders', () => {
             storefront,
             requests: new FakeShop(RECOGNISED),
             environment: environmentOf({ E2E_TEST_ORDER_SECRET: SECRET }, { environments }),
+            routes: ROUTES,
+            client: 'runner',
         });
 
         expect(paying.reach).toBe('success-page');
@@ -111,6 +119,8 @@ test.describe('starting a run of test orders', () => {
                 { E2E_ENV: 'production', E2E_TEST_ORDER_SECRET: SECRET },
                 { productionWriteGuard: { allowedOrigins: [PARTNER_ORIGIN] } },
             ),
+            routes: ROUTES,
+            client: 'runner',
         });
 
         expect([...run.shopOrigins]).toEqual(['https://www.example.com']);
@@ -127,6 +137,53 @@ test.describe('the terms of a placement', () => {
         expect(terms.cart).toBe(CART);
         expect(terms.shopOrigins).toBe(run.shopOrigins);
         expect(terms.storePaths).toBe(run.storePaths);
+    });
+
+    test('name the routes the run started with', async () => {
+        const routes = [ACME_CHECKOUT];
+        const run = await startTestOrderRun({
+            storefront,
+            requests: new FakeShop(RECOGNISED),
+            environment: environmentOf({ E2E_TEST_ORDER_SECRET: SECRET }),
+            routes,
+            client: 'runner',
+        });
+
+        expect(run.placementTerms(CART).routes).toBe(routes);
+    });
+
+    for (const client of SHOP_CLIENTS) {
+        test(`name the ${client} client the run started with`, async () => {
+            const run = await startTestOrderRun({
+                storefront,
+                requests: new FakeShop(RECOGNISED),
+                environment: environmentOf({ E2E_TEST_ORDER_SECRET: SECRET }),
+                routes: ROUTES,
+                client,
+            });
+
+            expect(run.placementTerms(CART).client).toBe(client);
+        });
+    }
+
+    test('hold the clean-up back for a placement on its way', async () => {
+        const shop = new FakeShop(RECOGNISED);
+        const run = await start(shop);
+        let answered = (): void => undefined;
+
+        run.carts.record(CART);
+        run.placementTerms(CART).awaitingAnswer?.(new Promise<void>(resolve => {
+            answered = resolve;
+        }));
+
+        const finished = finishTestOrderRun(run, freshTestInfo());
+
+        await Promise.resolve();
+        expect(shop.asked.filter(address => address.endsWith('/abandon'))).toEqual([]);
+
+        answered();
+        await finished;
+        expect(shop.asked.filter(address => address.endsWith('/abandon'))).toHaveLength(1);
     });
 
     test('carry no refusal key when the project gives none', async () => {
@@ -225,7 +282,7 @@ test.describe('finishing a run of test orders', () => {
         ]);
     });
 
-    test('fails on an order the shop could not cancel, saying it stays in the shop and the clean-up will not end it', async () => {
+    test('fails on an order the shop could not end, saying it stays in the shop and the clean-up will not end it', async () => {
         const shop = new FakeShop({ ...RECOGNISED, [`test-orders/${CART}/abandon`]: { status: 200, body: OPEN_ORDER } });
         const run = await start(shop);
         const testInfo = freshTestInfo();
@@ -233,7 +290,7 @@ test.describe('finishing a run of test orders', () => {
         run.carts.record(CART);
 
         const finished = await finishTestOrderRun(run, testInfo).then(() => undefined, (error: unknown) => error);
-        const stillOpen = `cart ${CART}: test order 000000002 could not be cancelled and is still processing`;
+        const stillOpen = `cart ${CART}: test order 000000002 could not be ended and is still processing`;
 
         expect(finished).toBeInstanceOf(AggregateError);
         expect(finished).toMatchObject({
@@ -242,7 +299,7 @@ test.describe('finishing a run of test orders', () => {
         expect(testInfo.annotations.map(annotation => annotation.description)).toEqual([stillOpen]);
     });
 
-    test('fails on an order the test abandoned itself and the shop could not cancel, though the test ignored the answer', async () => {
+    test('fails on an order the test abandoned itself and the shop could not end, though the test ignored the answer', async () => {
         const shop = new FakeShop({ ...RECOGNISED, [`test-orders/${CART}/abandon`]: { status: 200, body: OPEN_ORDER } });
         const run = await start(shop);
 
@@ -264,7 +321,7 @@ test.describe('finishing a run of test orders', () => {
         run.carts.record(OTHER_CART);
 
         const finished = await finishTestOrderRun(run, freshTestInfo()).then(() => undefined, (error: unknown) => error);
-        const stillOpen = `cart ${OTHER_CART}: test order 000000002 could not be cancelled and is still processing`;
+        const stillOpen = `cart ${OTHER_CART}: test order 000000002 could not be ended and is still processing`;
 
         expect(finished).toMatchObject({
             message: '1 test order(s) could not be abandoned after the test; the shop\'s own clean-up ends them later. '
@@ -327,9 +384,14 @@ test.describe('what abandoning a test order did, in a reader\'s words', () => {
             .toBe(`cart ${CART}: test order (no number) abandoned, now canceled`);
     });
 
-    test('says when the shop could not cancel the order, and the state it stays in', () => {
+    test('names a paid order the shop closed', () => {
+        expect(describeAbandonment(CART, { kind: 'abandoned', order: { incrementId: '7', state: 'closed', deleted: false } }))
+            .toBe(`cart ${CART}: test order 7 abandoned, now closed`);
+    });
+
+    test('says when the shop could not end the order, and the state it stays in', () => {
         expect(describeAbandonment(CART, { kind: 'still-open', order: { incrementId: '7', state: 'complete', deleted: false } }))
-            .toBe(`cart ${CART}: test order 7 could not be cancelled and is still complete`);
+            .toBe(`cart ${CART}: test order 7 could not be ended and is still complete`);
     });
 
     test('says when nothing was placed, with the shop\'s reason', () => {

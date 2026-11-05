@@ -108,7 +108,7 @@ keys. The one exception is an `@order` test: it presses the button only after `s
 for a cart it has recorded with `testOrders.carts.record()`. The package has no page object that presses it
 for the test, and a placement nobody signed is stopped in the browser and fails the test. The file of an
 `@order` test sets `test.use({ trace: 'off' })` at its top level, or the fixture refuses the test. The test
-checks that `testOrders.carts.abandon()` answers `abandoned`: `still-open` means the shop could not cancel
+checks that `testOrders.carts.abandon()` answers `abandoned`: `still-open` means the shop could not end
 the order, which stays in the shop and fails the test at its end. Never type a real
 person's e-mail address anywhere; test addresses use a domain that cannot deliver
 (`e2e+<something>@shop.test`).

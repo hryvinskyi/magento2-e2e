@@ -1,5 +1,7 @@
 import { test as base } from '@playwright/test';
 import type {
+    BrowserContext,
+    Page,
     PlaywrightTestArgs,
     PlaywrightTestOptions,
     PlaywrightWorkerArgs,
@@ -15,11 +17,12 @@ import { blockRequests } from './storefront/blocked-requests';
 import { startFreshGuest } from './storefront/fresh-guest';
 import { Storefront } from './storefront/storefront';
 import { keepWritesOnTheShop } from './storefront/write-guard';
+import { BrowserShopRequests } from './test-orders/browser-requests';
 import { stopUnsignedPlacements } from './test-orders/placement';
 import type { UnsignedPlacements } from './test-orders/placement';
 import { finishTestOrderRun, refuseTrace, startTestOrderRun } from './test-orders/run';
 import type { TestOrderRun } from './test-orders/run';
-import type { ShopRequests } from './test-orders/shop';
+import type { ShopClient, ShopRequests } from './test-orders/shop';
 
 /** The options of one test, set in the config's `use` or with `test.use()`. */
 export interface MagentoTestOptions {
@@ -53,8 +56,9 @@ export interface MagentoTestFixtures {
     testOrders: TestOrderRun;
     /**
      * How `testOrders` reaches the shop's REST API: the page's request client, which shares the browser
-     * context's cookies, HTTP credentials and certificate settings. A project overrides it with
-     * `test.extend` where the shop's firewall refuses that client.
+     * context's cookies, HTTP credentials and certificate settings, or with the project's
+     * `shopClient: 'browser'` a page of its own in that context. A project with a client of its own
+     * overrides it with `test.extend`.
      */
     shopRequests: ShopRequests;
     /** Enforces the safety tag of every test; never requested by name. */
@@ -67,6 +71,26 @@ export interface MagentoWorkerFixtures {
     /** The environment this run targets. */
     environment: Environment;
 }
+
+/** What the `shopRequests` fixture draws on. */
+interface ShopRequestsSources {
+    readonly context: BrowserContext;
+    readonly page: Page;
+    readonly storefront: Storefront;
+}
+
+/** Hands the test the requests of one client for as long as it needs them. */
+type ShopRequestsProvider = (sources: ShopRequestsSources, use: (requests: ShopRequests) => Promise<void>) => Promise<void>;
+
+const SHOP_REQUESTS: Readonly<Record<ShopClient, ShopRequestsProvider>> = {
+    runner: ({ page }, use) => use(page.request),
+    browser: async ({ context, storefront }, use) => {
+        const requests = await BrowserShopRequests.open(context, storefront.url());
+
+        await use(requests);
+        await requests.close();
+    },
+};
 
 /**
  * Playwright's `test`, with the project's stores, environment and protections: every test declares
@@ -108,7 +132,9 @@ export const test: TestType<
             await keepWritesOnTheShop(context, environment.shopOrigins());
         }
 
-        const unsigned = testInfo.tags.includes(TEST_ORDER_TAG) ? await stopUnsignedPlacements(context) : undefined;
+        const unsigned = testInfo.tags.includes(TEST_ORDER_TAG)
+            ? await stopUnsignedPlacements(context, projectOf(magentoProject).testOrderPlacements)
+            : undefined;
 
         await use(context);
 
@@ -143,18 +169,27 @@ export const test: TestType<
         await use(() => startFreshGuest(storefront));
     },
 
-    shopRequests: async ({ page }, use) => {
-        await use(page.request);
+    shopRequests: async ({ context, page, storefront, magentoProject }, use) => {
+        await SHOP_REQUESTS[projectOf(magentoProject).shopClient]({ context, page, storefront }, use);
     },
 
     // A fixture, not a `finally` in the test: Playwright tears a fixture down after a failed and after a
     // timed-out test. It depends on the storefront's page and on the client, so it is torn down before
-    // either is. The safety guard runs first, so a test skipped there never reaches the shop.
+    // either is, and the last abandon still has the client's page. The safety guard runs first, so a
+    // test skipped there never reaches the shop.
     testOrders: async ({ storefront, shopRequests, environment, magentoProject, trace }, use, testInfo) => {
-        requireTestOrderTag(projectOf(magentoProject).safetyTags(), testInfo.tags, testInfo.title);
+        const project = projectOf(magentoProject);
+
+        requireTestOrderTag(project.safetyTags(), testInfo.tags, testInfo.title);
         refuseTrace(trace, testInfo.title);
 
-        const run = await startTestOrderRun({ storefront, requests: shopRequests, environment });
+        const run = await startTestOrderRun({
+            storefront,
+            requests: shopRequests,
+            environment,
+            routes: project.testOrderPlacements,
+            client: project.shopClient,
+        });
 
         await use(run);
         await finishTestOrderRun(run, testInfo);

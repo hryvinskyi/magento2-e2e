@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.projectProblems = projectProblems;
 const node_path_1 = require("node:path");
 const safety_tags_1 = require("../safety/safety-tags");
+const answers_1 = require("../test-orders/answers");
+const shop_1 = require("../test-orders/shop");
 /**
  * Every way a project definition contradicts itself or the package's rules, one sentence each;
  * nothing when it is valid.
@@ -13,6 +15,8 @@ function projectProblems(config) {
         ...storeProblems(config),
         ...environmentProblems(config),
         ...safetyTagProblems(config),
+        ...testOrderPlacementProblems(config),
+        ...shopClientProblems(config),
     ];
 }
 function magentoRootProblems(config) {
@@ -58,4 +62,29 @@ function safetyTagProblems(config) {
         ...(tag.startsWith('@') ? [] : [`the safety tag "${tag}" must start with "@"`]),
         ...((0, safety_tags_1.isCoreSafetyTag)(tag) ? [`the safety tag "${tag}" is a core tag and cannot be redefined`] : []),
     ]);
+}
+function testOrderPlacementProblems({ testOrderPlacements }) {
+    if (testOrderPlacements === undefined) {
+        return [];
+    }
+    return testOrderPlacements.length === 0
+        ? ['testOrderPlacements names no placement route; leave it out for Magento\'s own checkout']
+        : testOrderPlacements.flatMap(missingRouteMembers);
+}
+/** A client no one sends through, read as a value: a plain JavaScript project gets past the types. */
+function shopClientProblems({ shopClient }) {
+    const known = shop_1.SHOP_CLIENTS;
+    return shopClient === undefined || known.includes(shopClient)
+        ? []
+        : [`shopClient must be one of ${shop_1.SHOP_CLIENTS.join(', ')}; got "${shopClient}"`];
+}
+/** What a declared route lacks, read as a value: a plain JavaScript project gets past the types. */
+function missingRouteMembers(route, index) {
+    const members = (0, answers_1.isRecord)(route) ? route : {};
+    const missing = [
+        ...(members.stopped instanceof RegExp ? [] : ['stopped (a RegExp)']),
+        ...(typeof members.cartOf === 'function' ? [] : ['cartOf (a function)']),
+        ...(typeof members.outcomeOf === 'function' ? [] : ['outcomeOf (a function)']),
+    ];
+    return missing.length === 0 ? [] : [`testOrderPlacements[${String(index)}] has no ${missing.join(', ')}`];
 }

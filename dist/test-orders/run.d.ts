@@ -2,10 +2,10 @@ import type { PlaywrightWorkerOptions, TestInfo } from '@playwright/test';
 import type { Environment, OrderReach } from '../environment/environment';
 import type { Storefront } from '../storefront/storefront';
 import { TestOrderCarts } from './carts';
-import type { TestOrderPlacementTerms } from './placement';
+import type { PlacementRoute, TestOrderPlacementTerms } from './placement';
 import { TestOrderProofs } from './proof';
 import { TestOrders } from './shop';
-import type { Abandonment, ShopRequests } from './shop';
+import type { Abandonment, ShopClient, ShopRequests } from './shop';
 /** Everything the test orders of one test need, and the carts they may have been placed from. */
 export interface TestOrderRun {
     readonly proofs: TestOrderProofs;
@@ -27,6 +27,10 @@ export interface TestOrderRunStart {
     readonly storefront: Pick<Storefront, 'url' | 'store'>;
     readonly requests: ShopRequests;
     readonly environment: Pick<Environment, 'storeBaseUrls' | 'testOrderReach' | 'testOrderSecret'>;
+    /** The addresses the project's checkouts place a cart at. */
+    readonly routes: readonly PlacementRoute[];
+    /** Who sends the signed placement. */
+    readonly client: ShopClient;
 }
 /**
  * Refuses a test of test orders that records a trace, whatever the mode: a trace keeps every request
@@ -41,12 +45,12 @@ export declare function refuseTrace(trace: PlaywrightWorkerOptions['trace'], tit
  * The origins and paths come from the stores alone: a proof never goes to a partner the write guard
  * lets a run write to.
  */
-export declare function startTestOrderRun({ storefront, requests, environment }: TestOrderRunStart): Promise<TestOrderRun>;
+export declare function startTestOrderRun({ storefront, requests, environment, routes, client }: TestOrderRunStart): Promise<TestOrderRun>;
 /**
  * Abandons, after the test, every test order the test did not settle itself, and notes each in the
  * report. It runs after a failed test and after a timed-out one too, as the teardown of a fixture.
  * Every cart is tried; afterwards it fails when any could not be abandoned, and when the shop could not
- * cancel any: such an order stays in the shop, and a passed run must not leave one unsaid.
+ * end an order: such an order stays in the shop, and a passed run must not leave one unsaid.
  */
 export declare function finishTestOrderRun(run: Pick<TestOrderRun, 'carts'>, testInfo: Pick<TestInfo, 'annotations'>): Promise<void>;
 /** What abandoning the test order of a cart did, in the reader's words. */

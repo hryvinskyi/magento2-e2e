@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { judgePlacement } from '../../src/test-orders/placement';
+import { GUEST_PAYMENT_INFORMATION, judgePlacement } from '../../src/test-orders/placement';
+import type { PlacementRoute } from '../../src/test-orders/placement';
+import { ACME_CHECKOUT, ACME_PLACEMENT } from './acme-checkout-route';
 
 /**
  * Which order placements a test order signs and which it stops in the browser, run in Node without a
@@ -12,7 +14,8 @@ const SHOP = 'https://shop.example';
 const SECOND_ORIGIN = 'https://second.shop.example';
 const TERMS = { cart: CART, shopOrigins: new Set([SHOP, SECOND_ORIGIN]), storePaths: new Set(['/', '/fr/']) };
 const PLACEMENT_URL = `${SHOP}/rest/main/V1/guest-carts/${CART}/payment-information`;
-const NOT_A_PLACEMENT = 'a test order is placed only through a guest cart\'s payment-information call';
+const NOT_A_PLACEMENT = 'a test order is placed only by a POST one of the project\'s placement routes names a cart for';
+const SIGNED = { kind: 'sign', maskedCartId: CART, route: GUEST_PAYMENT_INFORMATION };
 
 /** The body the checkout sends with a placement. */
 function placementBody(): string {
@@ -26,7 +29,7 @@ function placementBody(): string {
 test.describe('a test order placement', () => {
     test('is signed for the test\'s own guest cart, sent to the shop', () => {
         expect(judgePlacement({ method: 'POST', url: PLACEMENT_URL, body: placementBody() }, TERMS))
-            .toEqual({ kind: 'sign', maskedCartId: CART });
+            .toEqual(SIGNED);
     });
 
     test('lets a read of the same address through untouched', () => {
@@ -73,7 +76,7 @@ test.describe('the address of a test order placement', () => {
         test(`is signed ${form}`, () => {
             const url = `${SHOP}${prefix}/guest-carts/${CART}/payment-information`;
 
-            expect(judgePlacement({ method: 'POST', url, body: placementBody() }, TERMS)).toEqual({ kind: 'sign', maskedCartId: CART });
+            expect(judgePlacement({ method: 'POST', url, body: placementBody() }, TERMS)).toEqual(SIGNED);
         });
 
         test(`is stopped for a signed-in customer's cart ${form}`, () => {
@@ -87,7 +90,7 @@ test.describe('the address of a test order placement', () => {
     test('is signed on any of the shop\'s origins', () => {
         const url = `${SECOND_ORIGIN}/rest/main/V1/guest-carts/${CART}/payment-information`;
 
-        expect(judgePlacement({ method: 'POST', url, body: placementBody() }, TERMS)).toEqual({ kind: 'sign', maskedCartId: CART });
+        expect(judgePlacement({ method: 'POST', url, body: placementBody() }, TERMS)).toEqual(SIGNED);
     });
 
     test('is stopped below a path that is no store\'s, with the store code or without', () => {
@@ -127,7 +130,7 @@ test.describe('the address of a test order placement', () => {
 
     test('is judged without its query', () => {
         expect(judgePlacement({ method: 'POST', url: `${PLACEMENT_URL}?form_key=1`, body: placementBody() }, TERMS))
-            .toEqual({ kind: 'sign', maskedCartId: CART });
+            .toEqual(SIGNED);
     });
 });
 
@@ -168,7 +171,7 @@ test.describe('a project\'s own refusal of a placement', () => {
         const { refusal } = recordingRefusal(undefined);
 
         expect(judgePlacement({ method: 'POST', url: PLACEMENT_URL, body: placementBody() }, { ...TERMS, refusal }))
-            .toEqual({ kind: 'sign', maskedCartId: CART });
+            .toEqual(SIGNED);
     });
 
     test('stops the placement with its message when it throws', () => {
@@ -206,5 +209,152 @@ test.describe('a project\'s own refusal of a placement', () => {
         judgePlacement({ method: 'POST', url: elsewhere, body: placementBody() }, { ...TERMS, refusal });
 
         expect(asked).toEqual([]);
+    });
+});
+
+test.describe('a placement at a route the project declares', () => {
+    const ROUTES = [GUEST_PAYMENT_INFORMATION, ACME_CHECKOUT];
+    const DECLARED_TERMS = { ...TERMS, routes: ROUTES };
+    const ADDRESS = `${SHOP}${ACME_PLACEMENT}`;
+    const SIGNED_HERE = { kind: 'sign', maskedCartId: CART, route: ACME_CHECKOUT };
+
+    /** What the declared checkout sends for a cart. */
+    const bodyFor = (cart: string): string => JSON.stringify({ cartId: cart, email: 'e2e+order@shop.test' });
+
+    test('is signed for the test\'s cart, which the route reads from the JSON body', () => {
+        expect(judgePlacement({ method: 'POST', url: ADDRESS, body: bodyFor(CART) }, DECLARED_TERMS)).toEqual(SIGNED_HERE);
+    });
+
+    test('is signed below a store\'s path, and on any of the shop\'s origins', () => {
+        for (const url of [`${SHOP}/fr${ACME_PLACEMENT}`, `${SECOND_ORIGIN}${ACME_PLACEMENT}`]) {
+            expect(judgePlacement({ method: 'POST', url, body: bodyFor(CART) }, DECLARED_TERMS), url).toEqual(SIGNED_HERE);
+        }
+    });
+
+    test('is judged without its query', () => {
+        expect(judgePlacement({ method: 'POST', url: `${ADDRESS}?variant=1`, body: bodyFor(CART) }, DECLARED_TERMS)).toEqual(SIGNED_HERE);
+    });
+
+    test('is stopped for any cart but the one the test built', () => {
+        expect(judgePlacement({ method: 'POST', url: ADDRESS, body: bodyFor(OTHER_CART) }, DECLARED_TERMS)).toEqual({
+            kind: 'refuse',
+            reason: `the placement was for cart ${OTHER_CART}, not for cart ${CART} the test built`,
+        });
+    });
+
+    test('is stopped on another origin', () => {
+        const url = `${SHOP}.attacker.test${ACME_PLACEMENT}`;
+
+        expect(judgePlacement({ method: 'POST', url, body: bodyFor(CART) }, DECLARED_TERMS))
+            .toMatchObject({ kind: 'refuse', reason: expect.stringContaining('not the shop') });
+    });
+
+    test('is stopped below a path that is no store\'s', () => {
+        const url = `${SHOP}/de${ACME_PLACEMENT}`;
+
+        expect(judgePlacement({ method: 'POST', url, body: bodyFor(CART) }, DECLARED_TERMS))
+            .toMatchObject({ kind: 'refuse', reason: expect.stringContaining(NOT_A_PLACEMENT) });
+    });
+
+    test('is stopped with a body that is not a JSON object, saying so, and its route is not asked', () => {
+        const asked: string[] = [];
+        const route: PlacementRoute = {
+            ...ACME_CHECKOUT,
+            cartOf: path => {
+                asked.push(path);
+
+                return CART;
+            },
+        };
+
+        for (const body of [null, '', 'cartId=1', '[1]', '"text"']) {
+            expect(judgePlacement({ method: 'POST', url: ADDRESS, body }, { ...TERMS, routes: [route] }), String(body))
+                .toMatchObject({ kind: 'refuse', reason: expect.stringContaining('not the JSON object') });
+        }
+
+        expect(asked).toEqual([]);
+    });
+
+    test('is stopped with the reason of the project\'s refusal', () => {
+        const refusal = (): string => 'the placement carries a side effect';
+
+        expect(judgePlacement({ method: 'POST', url: ADDRESS, body: bodyFor(CART) }, { ...DECLARED_TERMS, refusal }))
+            .toEqual({ kind: 'refuse', reason: 'the placement carries a side effect' });
+    });
+
+    test('is stopped when it is not a POST', () => {
+        expect(judgePlacement({ method: 'PUT', url: ADDRESS, body: bodyFor(CART) }, DECLARED_TERMS))
+            .toMatchObject({ kind: 'refuse', reason: expect.stringContaining(NOT_A_PLACEMENT) });
+    });
+
+    test('lets a read through untouched', () => {
+        expect(judgePlacement({ method: 'GET', url: ADDRESS, body: null }, DECLARED_TERMS)).toEqual({ kind: 'pass' });
+    });
+
+    test('is stopped, naming the address, when the route names no cart for a request on its stopped pattern', () => {
+        const cases = [
+            { url: `${ADDRESS}/again`, body: bodyFor(CART) },
+            { url: ADDRESS, body: '{"email":"e2e+order@shop.test"}' },
+            { url: ADDRESS, body: '{"cartId":7}' },
+        ];
+
+        for (const { url, body } of cases) {
+            expect(judgePlacement({ method: 'POST', url, body }, DECLARED_TERMS), `${url} ${body}`)
+                .toEqual({ kind: 'refuse', reason: `${NOT_A_PLACEMENT}; the page sent POST ${url}` });
+        }
+    });
+
+    test('is stopped with the message of a route that throws', () => {
+        const route: PlacementRoute = {
+            ...ACME_CHECKOUT,
+            cartOf: () => {
+                throw new Error('the route could not read the body');
+            },
+        };
+
+        expect(judgePlacement({ method: 'POST', url: ADDRESS, body: bodyFor(CART) }, { ...TERMS, routes: [route] }))
+            .toEqual({ kind: 'refuse', reason: 'the route could not read the body' });
+    });
+
+    test('is signed by the route that names the test\'s cart when two routes name a cart', () => {
+        const another: PlacementRoute = { ...ACME_CHECKOUT, cartOf: () => OTHER_CART };
+
+        expect(judgePlacement({ method: 'POST', url: ADDRESS, body: bodyFor(CART) }, { ...TERMS, routes: [another, ACME_CHECKOUT] }))
+            .toEqual(SIGNED_HERE);
+    });
+
+    test('leaves Magento\'s own placement to the route that names it', () => {
+        expect(judgePlacement({ method: 'POST', url: PLACEMENT_URL, body: placementBody() }, DECLARED_TERMS)).toEqual(SIGNED);
+    });
+
+    test('takes Magento\'s own placement out of what is signed when the project declares only its own', () => {
+        expect(judgePlacement({ method: 'POST', url: PLACEMENT_URL, body: placementBody() }, { ...TERMS, routes: [ACME_CHECKOUT] }))
+            .toMatchObject({ kind: 'refuse', reason: expect.stringContaining(NOT_A_PLACEMENT) });
+    });
+
+    test('is not signed by the default route, which names no such address', () => {
+        expect(judgePlacement({ method: 'POST', url: ADDRESS, body: bodyFor(CART) }, TERMS))
+            .toMatchObject({ kind: 'refuse', reason: expect.stringContaining(NOT_A_PLACEMENT) });
+    });
+});
+
+test.describe('what an accepted placement says', () => {
+    test('is the order its route reads from the answer', () => {
+        expect(ACME_CHECKOUT.outcomeOf('{"orderId":"100000042"}')).toEqual({ kind: 'placed', orderId: '100000042' });
+    });
+
+    test('is that the order comes after payment, when the route reads that from the answer', () => {
+        expect(ACME_CHECKOUT.outcomeOf('{"next":"payment"}')).toEqual({ kind: 'after-payment' });
+    });
+
+    test('is the order id Magento\'s own checkout answers, a number or a string', () => {
+        expect(GUEST_PAYMENT_INFORMATION.outcomeOf('42')).toEqual({ kind: 'placed', orderId: '42' });
+        expect(GUEST_PAYMENT_INFORMATION.outcomeOf('"42"')).toEqual({ kind: 'placed', orderId: '42' });
+    });
+
+    test('refuses an answer of Magento\'s own checkout without an order id', () => {
+        for (const body of ['', 'true', '{"orderId":1}', '<html></html>']) {
+            expect(() => GUEST_PAYMENT_INFORMATION.outcomeOf(body), body).toThrow('without an order id');
+        }
     });
 });

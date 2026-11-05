@@ -3,6 +3,15 @@ import { isRecord, jsonOf, quotedBody, reportableMessageOf, shopReasonIn } from 
 import { RECOGNITION_SUBJECT } from './proof';
 import type { TestOrderProofs } from './proof';
 
+/** Who sends what a test order sends the shop. */
+export const SHOP_CLIENTS = ['runner', 'browser'] as const;
+
+/**
+ * - `runner` — Node, through Playwright's API client and `route.fetch()`;
+ * - `browser` — the browser, with its session at the shop's firewall.
+ */
+export type ShopClient = typeof SHOP_CLIENTS[number];
+
 /** How long the shop may take to answer a recognition probe or to abandon a test order. */
 const DEFAULT_DEADLINE_MS = 30_000;
 
@@ -19,13 +28,18 @@ export interface ShopRequestOptions {
     readonly data: Readonly<Record<string, never>>;
     /** Milliseconds before the request is given up. */
     readonly timeout: number;
-    /** A redirect is never followed: it would carry the proof to wherever it points. */
+    /**
+     * A redirect is never followed, by any client: it would carry the proof to wherever it points.
+     * Playwright's API client reads this value; `BrowserShopRequests` gets the same from the browser
+     * with `redirect: 'manual'`.
+     */
     readonly maxRedirects: 0;
 }
 
 /**
  * Sends requests to the shop's REST API. The browser context's request client is one, and carries the
- * context's HTTP credentials and certificate settings with it.
+ * context's HTTP credentials and certificate settings with it; `BrowserShopRequests` is another, for a
+ * shop whose firewall answers only a browser.
  */
 export interface ShopRequests {
     post(url: string, options: ShopRequestOptions): Promise<ShopAnswer>;
@@ -40,24 +54,27 @@ export type Recognition =
 export interface AbandonedTestOrder {
     /** The order's number; nothing when the shop names none. */
     readonly incrementId: string | null;
-    /** The order's state afterwards: `canceled` once it has been cancelled, any other when it could not be. */
+    /**
+     * The order's state afterwards: `canceled` once it has been cancelled, `closed` once it has been paid
+     * and refunded, any other when it could not be ended.
+     */
     readonly state: string;
-    /** Whether every order of the cart was deleted after it was cancelled (the shop's configuration decides). */
+    /** Whether every order of the cart was deleted after it ended (the shop's configuration decides). */
     readonly deleted: boolean;
 }
 
 /**
- * What the shop did when asked to abandon the test orders of a cart: it ended every one; or an order is
- * past cancelling and stays in the shop in the state it names, which the shop answers as a success; or
- * it has no order placed from that cart — the placement was refused or never sent — so there is nothing
- * to end.
+ * What the shop did when asked to abandon the test orders of a cart: it ended every one; or it could
+ * not end an order, which stays in the shop in the state it names and which the shop answers as a
+ * success; or it has no order placed from that cart — the placement was refused or never sent — so
+ * there is nothing to end.
  */
 export type Abandonment =
     | { readonly kind: 'abandoned'; readonly order: AbandonedTestOrder }
     | { readonly kind: 'still-open'; readonly order: AbandonedTestOrder }
     | { readonly kind: 'nothing-placed'; readonly reason: string };
 
-/** Ends the test order of a guest cart; what the clean-up after a test needs of the shop. */
+/** Ends the test order of a cart; what the clean-up after a test needs of the shop. */
 export interface TestOrderAbandoner {
     abandon(maskedCartId: string): Promise<Abandonment>;
 }
@@ -73,8 +90,8 @@ export class TestOrderContractError extends Error {
 /** The shop's answer to abandoning when it has no test order placed from the cart. */
 const NOTHING_PLACED_STATUS = 404;
 
-/** The state of an order that has ended; in any other the order is still open. */
-const CANCELLED_STATE = 'canceled';
+/** The states of an order that has ended; in any other the order is still open. */
+const ENDED_STATES: ReadonlySet<string> = new Set(['canceled', 'closed']);
 
 /** Reads the shop's answer to abandoning a test order: `{increment_id?, state, deleted}`. */
 export function parseAbandonedTestOrder(body: string): AbandonedTestOrder {
@@ -141,12 +158,12 @@ export class TestOrders implements TestOrderAbandoner {
     }
 
     /**
-     * Ends the test orders placed from a guest cart: the shop cancels each — which takes back what
-     * placing it did — and deletes it when it is configured to. A cart with an order past cancelling comes
-     * back as `still-open`, with the state it stays in. A cart the shop placed no order from is answered as
-     * such, not as a failure: there is nothing to end. Call it only once the shop has
-     * sent the browser on to payment, or once the test has given up on that, so no payment session is
-     * created for an order already ended.
+     * Ends the test orders placed from a cart: the shop cancels each — which takes back what placing it
+     * did — or refunds one already paid, which closes it, and deletes it when it is configured to. A cart
+     * with an order the shop could not end comes back as `still-open`, with the state it stays in. A cart
+     * the shop placed no order from is answered as such, not as a failure: there is nothing to end. Call
+     * it only once the shop has sent the browser on to payment, or once the test has given up on that, so
+     * no payment session is created for an order already ended.
      */
     public async abandon(maskedCartId: string): Promise<Abandonment> {
         const answer = await this.post(
@@ -165,7 +182,7 @@ export class TestOrders implements TestOrderAbandoner {
 
         const order = parseAbandonedTestOrder(body);
 
-        return { kind: order.state === CANCELLED_STATE ? 'abandoned' : 'still-open', order };
+        return { kind: ENDED_STATES.has(order.state) ? 'abandoned' : 'still-open', order };
     }
 
     /** Sends one request; a request that fails rejects with a plain error that keeps what was sent out of the report. */

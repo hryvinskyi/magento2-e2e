@@ -28,6 +28,9 @@ if (!Number.isInteger(homeStatus) || homeStatus < 100 || homeStatus > 599) {
 const PAGE = '<!doctype html><html><head><title>Consumer shop</title></head>'
     + '<body><p>shop</p><img src="/page-asset.png" alt=""></body></html>';
 
+/** A plain page of no scripts at the root of the origin, which a browser sends the shop's REST calls from. */
+const ROBOTS = { status: 200, type: 'text/plain', body: 'User-agent: *\n' };
+
 const RECOGNITION = /^\/rest\/[^/]+\/V1\/test-orders\/recognition$/;
 const ABANDON = /^\/rest\/[^/]+\/V1\/test-orders\/([^/]+)\/abandon$/;
 const JSON_TYPE = 'application/json';
@@ -52,6 +55,7 @@ function record(request, body) {
         path: request.url ?? '/',
         accept: request.headers.accept ?? '',
         client: request.headers['x-consumer-client'] ?? '',
+        site: request.headers['sec-fetch-site'] ?? '',
         body,
     };
 
@@ -126,7 +130,8 @@ const server = http.createServer((request, response) => {
             record(request, Buffer.concat(chunks).toString('utf8'));
         }
 
-        const answer = testOrderAnswer(request, path) ?? { status: statusOf(path), type: 'text/html', body: PAGE };
+        const answer = testOrderAnswer(request, path)
+            ?? (path === '/robots.txt' ? ROBOTS : { status: statusOf(path), type: 'text/html', body: PAGE });
 
         response.writeHead(answer.status, { 'Content-Type': answer.type, 'Cache-Control': 'no-store' });
         response.end(answer.body);

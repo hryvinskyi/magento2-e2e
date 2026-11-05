@@ -65,22 +65,26 @@ export type {
     Abandonment,
     Recognition,
     ShopAnswer,
+    ShopClient,
     ShopRequestOptions,
     ShopRequests,
     TestOrderAbandoner,
 } from './test-orders/shop';
 export { parseAbandonedTestOrder, TestOrderContractError, TestOrders } from './test-orders/shop';
+export { BrowserShopRequests } from './test-orders/browser-requests';
 export type { LeftoverCart } from './test-orders/carts';
 export { TestOrderCarts } from './test-orders/carts';
 export type {
     CaughtRequest,
     PlacedTestOrder,
+    PlacementOutcome,
+    PlacementRoute,
     PlacementSigner,
     PlacementVerdict,
     SignedPlacements,
     TestOrderPlacementTerms,
 } from './test-orders/placement';
-export { judgePlacement, signTestOrderPlacements } from './test-orders/placement';
+export { GUEST_PAYMENT_INFORMATION, judgePlacement, signTestOrderPlacements } from './test-orders/placement';
 export type { TestOrderRun } from './test-orders/run';
 export { describeAbandonment } from './test-orders/run';
 

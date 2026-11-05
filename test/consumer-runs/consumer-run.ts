@@ -22,6 +22,8 @@ export interface Received {
     readonly accept: string;
     /** The name a client of the project's own gave itself; empty for every other. */
     readonly client: string;
+    /** Where a browser says the request comes from; empty for what a browser did not send itself. */
+    readonly site: string;
 }
 
 export interface ConsumerRun {
@@ -182,6 +184,7 @@ function parseLog(text: string): readonly Received[] {
         const requestPath = 'path' in entry ? entry.path : undefined;
         const accept = 'accept' in entry ? entry.accept : undefined;
         const client = 'client' in entry ? entry.client : undefined;
+        const site = 'site' in entry ? entry.site : undefined;
 
         if (
             typeof method !== 'string'
@@ -189,11 +192,12 @@ function parseLog(text: string): readonly Received[] {
             || typeof requestPath !== 'string'
             || typeof accept !== 'string'
             || typeof client !== 'string'
+            || typeof site !== 'string'
         ) {
-            throw new Error(`The page server logged an entry without method, host, path, accept and client: ${line}`);
+            throw new Error(`The page server logged an entry without method, host, path, accept, client and site: ${line}`);
         }
 
-        return { method, host, path: requestPath, accept, client };
+        return { method, host, path: requestPath, accept, client, site };
     });
 }
 

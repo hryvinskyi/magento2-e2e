@@ -40,6 +40,40 @@ class ScriptedShop implements TestOrderAbandoner {
     }
 }
 
+test.describe('the clean-up after a test', () => {
+    test('waits for a placement on its way, having closed the record first, and only then asks the shop', async () => {
+        const shop = new ScriptedShop(new Map([[FIRST_CART, ABANDONED]]));
+        const carts = new TestOrderCarts(shop);
+        let answered = (): void => undefined;
+
+        carts.record(FIRST_CART);
+        carts.holdCleanUpFor(new Promise<void>(resolve => {
+            answered = resolve;
+        }));
+
+        const leftovers = carts.abandonLeftovers();
+
+        await Promise.resolve();
+        expect(shop.asked).toEqual([]);
+        expect(carts.mayPlace(FIRST_CART)).toBe(false);
+
+        answered();
+
+        expect(await leftovers).toEqual([{ cart: FIRST_CART, kind: 'answered', abandonment: ABANDONED }]);
+        expect(shop.asked).toEqual([FIRST_CART]);
+    });
+
+    test('goes on when a wait it was given fails', async () => {
+        const shop = new ScriptedShop(new Map([[FIRST_CART, ABANDONED]]));
+        const carts = new TestOrderCarts(shop);
+
+        carts.record(FIRST_CART);
+        carts.holdCleanUpFor(Promise.reject(new Error('The placement fell over.')));
+
+        expect(await carts.abandonLeftovers()).toEqual([{ cart: FIRST_CART, kind: 'answered', abandonment: ABANDONED }]);
+    });
+});
+
 test.describe('the carts a test may have placed a test order from', () => {
     test('are abandoned after the test when the test did not abandon them itself', async () => {
         const shop = new ScriptedShop(new Map([[FIRST_CART, ABANDONED]]));
@@ -99,7 +133,7 @@ test.describe('the carts a test may have placed a test order from', () => {
         expect(carts.unsettled()).toEqual([FIRST_CART]);
     });
 
-    test('stay unsettled when the shop could not cancel the order, so a test that ignores the answer still fails after it', async () => {
+    test('stay unsettled when the shop could not end the order, so a test that ignores the answer still fails after it', async () => {
         const shop = new ScriptedShop(new Map([[FIRST_CART, STILL_OPEN]]));
         const carts = new TestOrderCarts(shop);
 

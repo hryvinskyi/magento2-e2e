@@ -4,10 +4,10 @@ import type { Storefront } from '../storefront/storefront';
 import { reportableMessageOf } from './answers';
 import { TestOrderCarts } from './carts';
 import type { LeftoverCart } from './carts';
-import type { TestOrderPlacementTerms } from './placement';
+import type { PlacementRoute, TestOrderPlacementTerms } from './placement';
 import { systemClock, TestOrderProofs } from './proof';
 import { TestOrders } from './shop';
-import type { AbandonedTestOrder, Abandonment, ShopRequests } from './shop';
+import type { AbandonedTestOrder, Abandonment, ShopClient, ShopRequests } from './shop';
 
 type AbandonmentKind = Abandonment['kind'];
 
@@ -20,7 +20,7 @@ type AbandonmentWords<K extends AbandonmentKind = AbandonmentKind> = {
 
 const ABANDONMENT_WORDS: AbandonmentWords = {
     abandoned: (cart, { order }) => `cart ${cart}: test order ${numberOf(order)} abandoned, now ${order.state}${order.deleted ? ' and deleted' : ''}`,
-    'still-open': (cart, { order }) => `cart ${cart}: test order ${numberOf(order)} could not be cancelled and is still ${order.state}`,
+    'still-open': (cart, { order }) => `cart ${cart}: test order ${numberOf(order)} could not be ended and is still ${order.state}`,
     'nothing-placed': (cart, { reason }) => `cart ${cart}: no test order was placed from it, so there was nothing to abandon (${reason})`,
 };
 
@@ -46,6 +46,10 @@ export interface TestOrderRunStart {
     readonly storefront: Pick<Storefront, 'url' | 'store'>;
     readonly requests: ShopRequests;
     readonly environment: Pick<Environment, 'storeBaseUrls' | 'testOrderReach' | 'testOrderSecret'>;
+    /** The addresses the project's checkouts place a cart at. */
+    readonly routes: readonly PlacementRoute[];
+    /** Who sends the signed placement. */
+    readonly client: ShopClient;
 }
 
 /**
@@ -68,7 +72,7 @@ export function refuseTrace(trace: PlaywrightWorkerOptions['trace'], title: stri
  * The origins and paths come from the stores alone: a proof never goes to a partner the write guard
  * lets a run write to.
  */
-export async function startTestOrderRun({ storefront, requests, environment }: TestOrderRunStart): Promise<TestOrderRun> {
+export async function startTestOrderRun({ storefront, requests, environment, routes, client }: TestOrderRunStart): Promise<TestOrderRun> {
     const secret = environment.testOrderSecret();
 
     if (secret === undefined) {
@@ -102,6 +106,11 @@ export async function startTestOrderRun({ storefront, requests, environment }: T
             cart,
             shopOrigins,
             storePaths,
+            routes,
+            client,
+            awaitingAnswer: answer => {
+                carts.holdCleanUpFor(answer);
+            },
             signer: carts.placementSigner(proofs),
             ...(refusal === undefined ? {} : { refusal }),
         }),
@@ -112,7 +121,7 @@ export async function startTestOrderRun({ storefront, requests, environment }: T
  * Abandons, after the test, every test order the test did not settle itself, and notes each in the
  * report. It runs after a failed test and after a timed-out one too, as the teardown of a fixture.
  * Every cart is tried; afterwards it fails when any could not be abandoned, and when the shop could not
- * cancel any: such an order stays in the shop, and a passed run must not leave one unsaid.
+ * end an order: such an order stays in the shop, and a passed run must not leave one unsaid.
  */
 export async function finishTestOrderRun(run: Pick<TestOrderRun, 'carts'>, testInfo: Pick<TestInfo, 'annotations'>): Promise<void> {
     const leftovers = await run.carts.abandonLeftovers();
@@ -147,7 +156,7 @@ function failureOf(leftover: LeftoverCart): readonly Error[] {
     return leftover.kind === 'failed' ? [new Error(reportableMessageOf(leftover.error))] : [];
 }
 
-/** The reader's words for a cart whose order the shop could not cancel. */
+/** The reader's words for a cart whose order the shop could not end. */
 function stillOpenOf(leftover: LeftoverCart): readonly string[] {
     return leftover.kind === 'answered' && leftover.abandonment.kind === 'still-open'
         ? [describeAbandonment(leftover.cart, leftover.abandonment)]

@@ -122,7 +122,16 @@ test.describe('the runner\'s client of the shop\'s test orders', () => {
         }]);
     });
 
-    test('reads an order the shop could not cancel as still open, naming the state it stays in', async () => {
+    test('reads a paid order the shop refunded and closed as ended', async () => {
+        const shop = new RecordingShop(200, '{"increment_id":"100012345","state":"closed","deleted":false}');
+
+        expect(await clientOf(shop).abandon(MASKED_CART_ID)).toEqual({
+            kind: 'abandoned',
+            order: { incrementId: '100012345', state: 'closed', deleted: false },
+        });
+    });
+
+    test('reads an order the shop could not end as still open, naming the state it stays in', async () => {
         const shop = new RecordingShop(200, '{"increment_id":"100012345","state":"processing","deleted":false}');
 
         expect(await clientOf(shop).abandon(MASKED_CART_ID)).toEqual({

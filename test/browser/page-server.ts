@@ -13,6 +13,10 @@ export interface Served {
     readonly headers?: Readonly<Record<string, string>>;
     /** Drops the connection once the request has arrived, instead of answering. */
     readonly dropConnection?: boolean;
+    /** Sends the status and headers at once, and the body this much later. */
+    readonly bodyDelayMs?: number;
+    /** Answers 403 unless a browser sent the request itself, as a firewall that lets only browsers through does. */
+    readonly browsersOnly?: boolean;
 }
 
 /** A request as the server received it. */
@@ -114,13 +118,30 @@ export class PageServer {
                 return;
             }
 
+            if (page?.browsersOnly === true && request.headers['sec-fetch-mode'] === undefined) {
+                response.writeHead(403, { 'Content-Type': 'text/plain' });
+                response.end('Only a browser gets through.');
+
+                return;
+            }
+
             setTimeout(() => {
                 response.writeHead(page?.status ?? 200, {
                     'Content-Type': page?.type ?? 'text/plain',
                     'Cache-Control': 'no-store',
                     ...page?.headers,
                 });
-                response.end(page?.body ?? '');
+
+                if (page?.bodyDelayMs === undefined) {
+                    response.end(page?.body ?? '');
+
+                    return;
+                }
+
+                response.flushHeaders();
+                setTimeout(() => {
+                    response.end(page.body);
+                }, page.bodyDelayMs);
             }, page?.delayMs ?? 0);
         });
     }

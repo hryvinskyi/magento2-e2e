@@ -12,11 +12,11 @@ export type LeftoverCart = {
     readonly error: unknown;
 };
 /**
- * The guest carts one test may have placed a test order from, kept so that none outlives the test.
+ * The carts one test may have placed a test order from, kept so that none outlives the test.
  *
  * A cart is recorded before its pay button is pressed — the shop may create the order even when its
  * answer never reaches the test — and counts as settled once the shop has answered an abandon for it,
- * whether it ended an order or had none to end. An order the shop could not cancel settles nothing, so
+ * whether it ended an order or had none to end. An order the shop could not end settles nothing, so
  * a test that ignored that answer still meets it after the test. Whatever is still unsettled when the
  * test ends is abandoned by `abandonLeftovers()`, which the test's fixture calls in its teardown: Playwright runs a
  * fixture's teardown after a failed test and after a timed-out one, while a `finally` in the test body
@@ -24,12 +24,14 @@ export type LeftoverCart = {
  * ever, by which time the page may be gone.
  *
  * Once closed, no placement is signed any more, so a test body still running after its timeout cannot
- * place an order the clean-up has already passed by.
+ * place an order the clean-up has already passed by. A placement already on its way holds the clean-up
+ * back until the shop has answered it, or its deadline has passed.
  */
 export declare class TestOrderCarts {
     private readonly shop;
     private readonly recorded;
     private readonly answers;
+    private readonly onTheirWay;
     private closed;
     constructor(shop: TestOrderAbandoner);
     /** Remembers a cart an order is about to be placed from; refused once the clean-up has begun. */
@@ -42,13 +44,16 @@ export declare class TestOrderCarts {
      * the clean-up began.
      */
     placementSigner(proofs: TestOrderProofs): PlacementSigner;
+    /** Keeps the clean-up from asking the shop anything until `answer`, the wait for a placement on its way, has settled. */
+    holdCleanUpFor(answer: Promise<unknown>): void;
     /** Asks the shop to abandon the test order of a cart, and keeps what it answered. */
     abandon(cart: string): Promise<Abandonment>;
-    /** The recorded carts the shop has not answered an abandon for, or whose order it could not cancel, oldest first. */
+    /** The recorded carts the shop has not answered an abandon for, or whose order it could not end, oldest first. */
     unsettled(): readonly string[];
     /**
-     * Closes the record and abandons every unsettled cart, each on its own: one the shop fails to
-     * abandon does not keep the others from being tried. Says what became of each.
+     * Closes the record, waits for the placements on their way, and abandons every unsettled cart, each
+     * on its own: one the shop fails to abandon does not keep the others from being tried. Says what
+     * became of each.
      */
     abandonLeftovers(): Promise<readonly LeftoverCart[]>;
 }

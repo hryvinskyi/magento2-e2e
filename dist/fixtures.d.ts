@@ -35,8 +35,9 @@ export interface MagentoTestFixtures {
     testOrders: TestOrderRun;
     /**
      * How `testOrders` reaches the shop's REST API: the page's request client, which shares the browser
-     * context's cookies, HTTP credentials and certificate settings. A project overrides it with
-     * `test.extend` where the shop's firewall refuses that client.
+     * context's cookies, HTTP credentials and certificate settings, or with the project's
+     * `shopClient: 'browser'` a page of its own in that context. A project with a client of its own
+     * overrides it with `test.extend`.
      */
     shopRequests: ShopRequests;
     /** Enforces the safety tag of every test; never requested by name. */

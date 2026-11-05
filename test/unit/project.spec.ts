@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import type { PageGuard } from '../../src/project/project';
 import { defineProject, isMagentoProject } from '../../src/project/project';
+import { GUEST_PAYMENT_INFORMATION } from '../../src/test-orders/placement';
+import type { PlacementRoute } from '../../src/test-orders/placement';
+import type { ShopClient } from '../../src/test-orders/shop';
+import { ACME_CHECKOUT } from './acme-checkout-route';
 import { sampleConfig } from './sample-project';
 
 const localEnvironment = { baseUrl: (): string => 'https://shop.test/' };
@@ -69,7 +73,66 @@ test.describe('defineProject refuses a definition that contradicts itself', () =
     });
 });
 
+test.describe('defineProject refuses placement routes it could not use', () => {
+    test('an empty list, which would leave no placement to sign', () => {
+        expect(() => defineProject(sampleConfig({ testOrderPlacements: [] })))
+            .toThrow('testOrderPlacements names no placement route; leave it out for Magento\'s own checkout');
+    });
+
+    test('a route without any of its members', () => {
+        const empty: Partial<PlacementRoute> = {};
+
+        expect(() => defineProject(sampleConfig({ testOrderPlacements: [ACME_CHECKOUT, empty as PlacementRoute] })))
+            .toThrow('testOrderPlacements[1] has no stopped (a RegExp), cartOf (a function), outcomeOf (a function)');
+    });
+
+    test('each missing member, on its own', () => {
+        const cartOf = (): undefined => undefined;
+        const outcomeOf = (): { kind: 'after-payment' } => ({ kind: 'after-payment' });
+        const stopped = /\/place/;
+        const cases: readonly { readonly route: Partial<PlacementRoute>; readonly missing: string }[] = [
+            { route: { cartOf, outcomeOf }, missing: 'stopped (a RegExp)' },
+            { route: { stopped, outcomeOf }, missing: 'cartOf (a function)' },
+            { route: { stopped, cartOf }, missing: 'outcomeOf (a function)' },
+        ];
+
+        for (const { route, missing } of cases) {
+            expect(() => defineProject(sampleConfig({ testOrderPlacements: [route as PlacementRoute] })), missing)
+                .toThrow(`testOrderPlacements[0] has no ${missing}.`);
+        }
+    });
+});
+
+test.describe('defineProject refuses a shop client it does not know', () => {
+    test('naming the two there are, read as a value as a plain JavaScript project gets past the types', () => {
+        const unknownClient: unknown = 'curl';
+
+        expect(() => defineProject(sampleConfig({ shopClient: unknownClient as ShopClient })))
+            .toThrow('shopClient must be one of runner, browser; got "curl".');
+    });
+});
+
 test.describe('a defined project', () => {
+    test('sends what a test order sends from the runner unless it says otherwise', () => {
+        expect(defineProject(sampleConfig()).shopClient).toBe('runner');
+    });
+
+    test('keeps the shop client it names', () => {
+        expect(defineProject(sampleConfig({ shopClient: 'browser' })).shopClient).toBe('browser');
+        expect(defineProject(sampleConfig({ shopClient: 'runner' })).shopClient).toBe('runner');
+    });
+
+    test('places through Magento\'s own checkout unless it declares otherwise', () => {
+        expect(defineProject(sampleConfig()).testOrderPlacements).toEqual([GUEST_PAYMENT_INFORMATION]);
+    });
+
+    test('keeps the placement routes it declares, in a list nothing can change', () => {
+        const { testOrderPlacements } = defineProject(sampleConfig({ testOrderPlacements: [GUEST_PAYMENT_INFORMATION, ACME_CHECKOUT] }));
+
+        expect(testOrderPlacements).toEqual([GUEST_PAYMENT_INFORMATION, ACME_CHECKOUT]);
+        expect(Object.isFrozen(testOrderPlacements)).toBe(true);
+    });
+
     test('finds a store by its code', () => {
         const project = defineProject(sampleConfig());
 

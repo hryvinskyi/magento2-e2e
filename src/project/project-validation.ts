@@ -1,5 +1,7 @@
 import { isAbsolute } from 'node:path';
 import { isCoreSafetyTag } from '../safety/safety-tags';
+import { isRecord } from '../test-orders/answers';
+import { SHOP_CLIENTS } from '../test-orders/shop';
 import type { ProjectConfig } from './project';
 
 /**
@@ -12,6 +14,8 @@ export function projectProblems(config: ProjectConfig): readonly string[] {
         ...storeProblems(config),
         ...environmentProblems(config),
         ...safetyTagProblems(config),
+        ...testOrderPlacementProblems(config),
+        ...shopClientProblems(config),
     ];
 }
 
@@ -63,4 +67,35 @@ function safetyTagProblems(config: ProjectConfig): readonly string[] {
         ...(tag.startsWith('@') ? [] : [`the safety tag "${tag}" must start with "@"`]),
         ...(isCoreSafetyTag(tag) ? [`the safety tag "${tag}" is a core tag and cannot be redefined`] : []),
     ]);
+}
+
+function testOrderPlacementProblems({ testOrderPlacements }: ProjectConfig): readonly string[] {
+    if (testOrderPlacements === undefined) {
+        return [];
+    }
+
+    return testOrderPlacements.length === 0
+        ? ['testOrderPlacements names no placement route; leave it out for Magento\'s own checkout']
+        : testOrderPlacements.flatMap(missingRouteMembers);
+}
+
+/** A client no one sends through, read as a value: a plain JavaScript project gets past the types. */
+function shopClientProblems({ shopClient }: ProjectConfig): readonly string[] {
+    const known: readonly unknown[] = SHOP_CLIENTS;
+
+    return shopClient === undefined || known.includes(shopClient)
+        ? []
+        : [`shopClient must be one of ${SHOP_CLIENTS.join(', ')}; got "${shopClient}"`];
+}
+
+/** What a declared route lacks, read as a value: a plain JavaScript project gets past the types. */
+function missingRouteMembers(route: unknown, index: number): readonly string[] {
+    const members = isRecord(route) ? route : {};
+    const missing = [
+        ...(members.stopped instanceof RegExp ? [] : ['stopped (a RegExp)']),
+        ...(typeof members.cartOf === 'function' ? [] : ['cartOf (a function)']),
+        ...(typeof members.outcomeOf === 'function' ? [] : ['outcomeOf (a function)']),
+    ];
+
+    return missing.length === 0 ? [] : [`testOrderPlacements[${String(index)}] has no ${missing.join(', ')}`];
 }

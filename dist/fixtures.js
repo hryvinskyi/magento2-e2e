@@ -8,8 +8,17 @@ const blocked_requests_1 = require("./storefront/blocked-requests");
 const fresh_guest_1 = require("./storefront/fresh-guest");
 const storefront_1 = require("./storefront/storefront");
 const write_guard_1 = require("./storefront/write-guard");
+const browser_requests_1 = require("./test-orders/browser-requests");
 const placement_1 = require("./test-orders/placement");
 const run_1 = require("./test-orders/run");
+const SHOP_REQUESTS = {
+    runner: ({ page }, use) => use(page.request),
+    browser: async ({ context, storefront }, use) => {
+        const requests = await browser_requests_1.BrowserShopRequests.open(context, storefront.url());
+        await use(requests);
+        await requests.close();
+    },
+};
 /**
  * Playwright's `test`, with the project's stores, environment and protections: every test declares
  * exactly one safety tag and is skipped where that tag may not run, the `context` fixture aborts the
@@ -40,7 +49,9 @@ exports.test = test_1.test.extend({
         if (environment.guardsWrites()) {
             await (0, write_guard_1.keepWritesOnTheShop)(context, environment.shopOrigins());
         }
-        const unsigned = testInfo.tags.includes(safety_tags_1.TEST_ORDER_TAG) ? await (0, placement_1.stopUnsignedPlacements)(context) : undefined;
+        const unsigned = testInfo.tags.includes(safety_tags_1.TEST_ORDER_TAG)
+            ? await (0, placement_1.stopUnsignedPlacements)(context, projectOf(magentoProject).testOrderPlacements)
+            : undefined;
         await use(context);
         if (unsigned !== undefined) {
             refuseUnsignedPlacements(unsigned);
@@ -65,16 +76,24 @@ exports.test = test_1.test.extend({
     freshGuest: async ({ storefront }, use) => {
         await use(() => (0, fresh_guest_1.startFreshGuest)(storefront));
     },
-    shopRequests: async ({ page }, use) => {
-        await use(page.request);
+    shopRequests: async ({ context, page, storefront, magentoProject }, use) => {
+        await SHOP_REQUESTS[projectOf(magentoProject).shopClient]({ context, page, storefront }, use);
     },
     // A fixture, not a `finally` in the test: Playwright tears a fixture down after a failed and after a
     // timed-out test. It depends on the storefront's page and on the client, so it is torn down before
-    // either is. The safety guard runs first, so a test skipped there never reaches the shop.
+    // either is, and the last abandon still has the client's page. The safety guard runs first, so a
+    // test skipped there never reaches the shop.
     testOrders: async ({ storefront, shopRequests, environment, magentoProject, trace }, use, testInfo) => {
-        (0, safety_tags_1.requireTestOrderTag)(projectOf(magentoProject).safetyTags(), testInfo.tags, testInfo.title);
+        const project = projectOf(magentoProject);
+        (0, safety_tags_1.requireTestOrderTag)(project.safetyTags(), testInfo.tags, testInfo.title);
         (0, run_1.refuseTrace)(trace, testInfo.title);
-        const run = await (0, run_1.startTestOrderRun)({ storefront, requests: shopRequests, environment });
+        const run = await (0, run_1.startTestOrderRun)({
+            storefront,
+            requests: shopRequests,
+            environment,
+            routes: project.testOrderPlacements,
+            client: project.shopClient,
+        });
         await use(run);
         await (0, run_1.finishTestOrderRun)(run, testInfo);
     },

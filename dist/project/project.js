@@ -4,6 +4,7 @@ exports.defineProject = defineProject;
 exports.isMagentoProject = isMagentoProject;
 const environment_1 = require("../environment/environment");
 const safety_tags_1 = require("../safety/safety-tags");
+const placement_1 = require("../test-orders/placement");
 const own_entry_1 = require("./own-entry");
 const project_validation_1 = require("./project-validation");
 /**
@@ -41,6 +42,8 @@ function defineProject(config) {
         blockedRequests: Object.freeze([...(config.blockedRequests ?? [])]),
         storefrontBehaviour: storefrontBehaviourOf(config),
         blockServiceWorkers: config.blockServiceWorkers ?? false,
+        testOrderPlacements: Object.freeze([...(config.testOrderPlacements ?? [placement_1.GUEST_PAYMENT_INFORMATION])]),
+        shopClient: config.shopClient ?? 'runner',
         environment(variables = process.env) {
             return (0, environment_1.createEnvironment)(context, variables);
         },

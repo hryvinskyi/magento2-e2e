@@ -3,8 +3,8 @@ export declare const TEST_ORDER_PROOF_HEADER = "X-Test-Order-Proof";
 /**
  * What a proof lets the runner do; the shop accepts a proof only for the action it was made for, so a
  * proof that placed an order cannot also abandon one or answer the recognition probe.
- * - `place` — place an order from a guest cart (the subject is the cart's masked id);
- * - `abandon` — end the test order of a guest cart (the subject is the cart's masked id);
+ * - `place` — place an order from a cart (the subject is the cart's masked id);
+ * - `abandon` — end the test order of a cart (the subject is the cart's masked id);
  * - `recognise` — ask whether the shop recognises the runner at all (the subject is `RECOGNITION_SUBJECT`).
  */
 export declare const TEST_ORDER_ACTIONS: readonly ["place", "abandon", "recognise"];

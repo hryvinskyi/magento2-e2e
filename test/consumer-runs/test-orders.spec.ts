@@ -11,12 +11,17 @@ const OTHER_SECRET = 'consumer-other-order-secret-0123456789abcdef';
 const RECOGNITION = '/rest/main/V1/test-orders/recognition';
 const ABANDON = '/rest/main/V1/test-orders/consumer-cart/abandon';
 const PLACEMENT = '/rest/main/V1/guest-carts/consumer-cart/payment-information';
+const DECLARED_PLACEMENT = '/rest/V1/acme-checkout/place';
 
 const LEFT = 'a test order the test leaves is abandoned after it';
 const ASKING_CART_TEST = 'a cart test may not ask for test orders';
 const UNSIGNED = 'an order test that does not sign places nothing';
 const CART_PLACEMENT = 'a cart test is not stopped at a placement';
+const DECLARED_UNSIGNED = 'an order test that does not sign a declared placement places nothing';
+const DECLARED_CART_PLACEMENT = 'a cart test is not stopped at a declared placement';
+const DECLARED_SIGNED = 'an order test signs the placement the project declares';
 const OWN_CLIENT = 'a test order goes through the client the project gives';
+const THROUGH_THE_BROWSER = 'a test order goes through the browser';
 const DEFAULT_TRACE = 'an order test that keeps the default trace asks the shop nothing';
 const TRACE_OBJECT = 'an order test with a trace object asks the shop nothing';
 
@@ -56,10 +61,10 @@ test.describe('an @order test', () => {
             .toEqual(['cart consumer-cart: test order 000000001 abandoned, now canceled']);
     });
 
-    test('fails when the shop could not cancel what it left, saying the order stays in the shop', async () => {
+    test('fails when the shop could not end what it left, saying the order stays in the shop', async () => {
         const run = await runOne(LEFT, { ...SAME_SECRET, E2E_CONSUMER_ABANDONED_STATE: 'processing' });
         const left = testIn(run.report, 'desktop', LEFT);
-        const stillOpen = 'cart consumer-cart: test order 000000001 could not be cancelled and is still processing';
+        const stillOpen = 'cart consumer-cart: test order 000000001 could not be ended and is still processing';
 
         expect(left.status).toBe('unexpected');
         expect(left.errors.join('\n')).toContain(
@@ -92,6 +97,39 @@ test.describe('an @order test', () => {
     });
 });
 
+test.describe('a placement the project declares', () => {
+    test('fails an @order test that posts it unsigned, and the shop receives none', async () => {
+        const run = await runOne(DECLARED_UNSIGNED, SAME_SECRET);
+        const unsigned = testIn(run.report, 'desktop', DECLARED_UNSIGNED);
+
+        expect(unsigned.status).toBe('unexpected');
+        expect(unsigned.errors.join('\n')).toContain(
+            `An @order test presses pay only after signTestOrderPlacements(); stopped in the browser: POST http://localhost:${String(run.port)}${DECLARED_PLACEMENT}.`,
+        );
+        expect(receivedPaths(run.received)).not.toContain(DECLARED_PLACEMENT);
+    });
+
+    test('is signed through the terms of the run, and resolves without an order id', async () => {
+        const run = await runOne(DECLARED_SIGNED, SAME_SECRET);
+        const signed = testIn(run.report, 'desktop', DECLARED_SIGNED);
+
+        expect(signed.errors).toEqual([]);
+        expect(signed.status).toBe('expected');
+        expect(receivedPaths(run.received)).toContain(DECLARED_PLACEMENT);
+        expect(annotated(signed, 'test order left by the test'))
+            .toEqual(['cart consumer-cart: test order 000000001 abandoned, now canceled']);
+    });
+
+    test('is not stopped for a @cart test', async () => {
+        const run = await runOne(DECLARED_CART_PLACEMENT, {});
+        const open = testIn(run.report, 'desktop', DECLARED_CART_PLACEMENT);
+
+        expect(open.errors).toEqual([]);
+        expect(open.status).toBe('expected');
+        expect(receivedPaths(run.received)).toContain(DECLARED_PLACEMENT);
+    });
+});
+
 test.describe('a project\'s own client', () => {
     test('carries the proofs of the run instead of the page\'s', async () => {
         const run = await runOne(OWN_CLIENT, SAME_SECRET);
@@ -103,6 +141,44 @@ test.describe('a project\'s own client', () => {
             .toEqual(['cart consumer-cart: test order 000000001 abandoned, now canceled']);
         expect(run.received.filter(request => request.path.includes('test-orders')).map(request => [request.path, request.client]))
             .toEqual([[RECOGNITION, 'own'], [ABANDON, 'own']]);
+    });
+});
+
+test.describe('a project whose shop client is the browser', () => {
+    const THROUGH = { ...SAME_SECRET, E2E_CONSUMER_SHOP_CLIENT: 'browser' };
+
+    /** Where each of the shop's REST calls of a run came from, by a browser's own account. */
+    function testOrderSites(run: ConsumerRun): readonly (readonly string[])[] {
+        return run.received.filter(request => request.path.includes('test-orders')).map(request => [request.path, request.site]);
+    }
+
+    test('sends the REST calls from a page of the browser at the origin\'s root, and closes that page at the end', async () => {
+        const run = await runOne(THROUGH_THE_BROWSER, THROUGH);
+        const through = testIn(run.report, 'desktop', THROUGH_THE_BROWSER);
+
+        expect(through.errors).toEqual([]);
+        expect(through.status).toBe('expected');
+        expect(testOrderSites(run)).toEqual([[RECOGNITION, 'same-origin'], [ABANDON, 'same-origin']]);
+        expect(receivedPaths(run.received)).toContain('/robots.txt');
+        expect(annotated(through, 'test order left by the test'))
+            .toEqual(['cart consumer-cart: test order 000000001 abandoned, now canceled']);
+    });
+
+    test('lets the browser send the signed placement', async () => {
+        const run = await runOne(DECLARED_SIGNED, THROUGH);
+        const signed = testIn(run.report, 'desktop', DECLARED_SIGNED);
+
+        expect(signed.errors).toEqual([]);
+        expect(signed.status).toBe('expected');
+        expect(run.received.filter(request => request.path === DECLARED_PLACEMENT).map(request => request.site)).toEqual(['same-origin']);
+    });
+
+    test('is not what a project gets unless it says so: the runner sends both', async () => {
+        const run = await runOne(DECLARED_SIGNED, SAME_SECRET);
+
+        expect(testOrderSites(run)).toEqual([[RECOGNITION, ''], [ABANDON, '']]);
+        expect(run.received.filter(request => request.path === DECLARED_PLACEMENT).map(request => request.site)).toEqual(['']);
+        expect(receivedPaths(run.received)).not.toContain('/robots.txt');
     });
 });
 

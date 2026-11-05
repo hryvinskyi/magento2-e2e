@@ -1,6 +1,13 @@
 import path from 'node:path';
-import { consentCookie, defineProject, sessionStorageFlag, TEST_ORDER_TAG, testOrderSafetyRule } from '@hryvinskyi/magento2-e2e';
-import type { EnvironmentDefinition, EnvironmentVariables, MagentoProject, Store as BaseStore } from '@hryvinskyi/magento2-e2e';
+import {
+    consentCookie,
+    defineProject,
+    GUEST_PAYMENT_INFORMATION,
+    sessionStorageFlag,
+    TEST_ORDER_TAG,
+    testOrderSafetyRule,
+} from '@hryvinskyi/magento2-e2e';
+import type { EnvironmentDefinition, EnvironmentVariables, MagentoProject, PlacementRoute, Store as BaseStore } from '@hryvinskyi/magento2-e2e';
 
 /** Which host a store is served from; each environment says what that host is there. */
 export type HostLabel = 'shop';
@@ -52,6 +59,16 @@ declare module '@hryvinskyi/magento2-e2e' {
     }
 }
 
+/** Where this project's second checkout places a cart. */
+export const OWN_CHECKOUT_PLACEMENT = '/rest/V1/acme-checkout/place';
+
+/** The project's second checkout: the cart is in the JSON body, and the order comes after payment. */
+const OWN_CHECKOUT: PlacementRoute = {
+    stopped: /\/acme-checkout\/place/,
+    cartOf: (path, body) => (path === OWN_CHECKOUT_PLACEMENT && typeof body.cartId === 'string' ? body.cartId : undefined),
+    outcomeOf: () => ({ kind: 'after-payment' }),
+};
+
 export const project: MagentoProject = defineProject({
     name: 'Consumer',
     magentoRoot: path.join(__dirname, 'magento'),
@@ -64,4 +81,6 @@ export const project: MagentoProject = defineProject({
     blockedRequests: [new RegExp(`${BLOCKED_PATH}(?:[/?]|$)`)],
     productionWriteGuard: {},
     safetyTags: { [TEST_ORDER_TAG]: testOrderSafetyRule },
+    testOrderPlacements: [GUEST_PAYMENT_INFORMATION, OWN_CHECKOUT],
+    shopClient: process.env.E2E_CONSUMER_SHOP_CLIENT === 'browser' ? 'browser' : 'runner',
 });
