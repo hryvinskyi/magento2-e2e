@@ -100,6 +100,7 @@ also when every test of the file is then skipped: nothing that writes belongs in
 | `@cart` | create a **guest** cart, walk the checkout up to the pay button | yes |
 | `@mutating` | anything that persists: place an order, register or log in a customer, subscribe to a newsletter, submit a form, write a review, redeem a coupon | never |
 | `@order` | place a test order the shop recognises, and abandon it; only in a project that adds `testOrderSafetyRule` to its `safetyTags` | up to the payment window, with the project's `productionWriteGuard` |
+| `@admin` | sign in to the admin and work there; only in a project that declares `admin` | only where the project says `admin: { onProduction: true }` |
 
 A project may add tags of its own, each with its rule. Never press the pay button outside a `@mutating`
 test: it places a real order with a real payment provider. A `@mutating` test that presses it stops the
@@ -117,6 +118,44 @@ person's e-mail address anywhere; test addresses use a domain that cannot delive
 `E2E_SEARCH_SERVICE=off`. `@mobile` also runs a test on the phone project; `@mobile-only` runs it only
 there. Keep `@smoke`, where a project uses it for the post-deployment run, for rules whose breakage is
 urgent and tests that finish in well under a minute.
+
+## Tests in the admin
+
+A rule the admin sets (a configuration field, a grid, a save) is checked in the admin with the `admin`
+fixture; what the setting does to the storefront is checked on the storefront, in the same test when one
+drives the other.
+
+```ts
+import { ADMIN_TAG, expect, test } from '@hryvinskyi/magento2-e2e';
+
+test.use({ trace: 'off' });                    // a trace would keep the session cookie: the fixture refuses one
+
+test('the rule, in business words', { tag: ADMIN_TAG }, async ({ admin, storefront }) => {
+    await admin.openMenuItem('menu-magento-catalog-catalog-products');   // the item's data-ui-id
+    await admin.settled();                                               // the grid's mask gone
+    await admin.follow(admin.page.getByRole('link', { name: 'Edit' }).first());
+    expect(admin.route()).toMatch(/^catalog\/product\/edit\/id\/\d+$/);   // without the secret key
+    await admin.page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(admin.messages('success')).toBeVisible();
+    await storefront.open();                                             // the storefront, without the admin's session
+});
+```
+
+- **Never type an admin address.** With secret keys on, Magento sends a typed address to the dashboard. Open
+  `admin.open()` (the start page), `admin.openMenuItem(id)` with the item's `data-ui-id`, or
+  `admin.follow(link)` for a link the page shows; assert on `admin.route()`, never on the URL.
+- **Read the menu id on the real page** (`[data-ui-id^="menu-"]` in the admin menu); an item that only opens a
+  submenu has no page.
+- **A request of the test's own** through the admin's session carries `form_key: await admin.formKey()`.
+- **`settled()` after every click that loads data**, before an assertion: a grid or a form draws a mask while
+  it loads.
+- The admin user and password come from `E2E_ADMIN_USER` and `E2E_ADMIN_PASSWORD`, never from the test or a
+  page object, and never appear in a test title, an evidence name or a log line.
+- A sign-in failure names its cause (credentials, CAPTCHA, two-factor authentication) and is not retried in
+  that worker. "The admin session ended" means a second worker signed in as the same user: the environment
+  needs `admin/security/admin_account_sharing` on, or the admin tests run in one worker.
+- What the test saves stays saved: an `@admin` test that changes configuration restores it in the same test,
+  and never runs where it may not write.
 
 ## A test that cannot fail is worse than no test
 

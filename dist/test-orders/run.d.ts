@@ -34,8 +34,7 @@ export interface TestOrderRunStart {
 }
 /**
  * Refuses a test of test orders that records a trace, whatever the mode: a trace keeps every request
- * header, so it would keep the proofs. Playwright's `trace` option names its mode directly or in an
- * object.
+ * header, so it would keep the proofs.
  */
 export declare function refuseTrace(trace: PlaywrightWorkerOptions['trace'], title: string): void;
 /**

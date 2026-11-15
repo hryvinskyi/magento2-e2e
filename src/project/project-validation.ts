@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { ADMIN_TAG } from '../safety/admin-tag';
 import { isCoreSafetyTag } from '../safety/safety-tags';
 import { isRecord } from '../test-orders/answers';
 import { SHOP_CLIENTS } from '../test-orders/shop';
@@ -16,6 +17,7 @@ export function projectProblems(config: ProjectConfig): readonly string[] {
         ...safetyTagProblems(config),
         ...testOrderPlacementProblems(config),
         ...shopClientProblems(config),
+        ...adminProblems(config),
     ];
 }
 
@@ -66,7 +68,30 @@ function safetyTagProblems(config: ProjectConfig): readonly string[] {
     return Object.keys(config.safetyTags ?? {}).flatMap(tag => [
         ...(tag.startsWith('@') ? [] : [`the safety tag "${tag}" must start with "@"`]),
         ...(isCoreSafetyTag(tag) ? [`the safety tag "${tag}" is a core tag and cannot be redefined`] : []),
+        ...(tag === ADMIN_TAG ? [`the safety tag "${tag}" comes with admin in the project definition and cannot be defined in safetyTags`] : []),
     ]);
+}
+
+/**
+ * An admin nobody can reach, an address of an admin the project does not have, and the address of the
+ * live shop's admin in a project that keeps `@admin` off the live shop: each says two things at once.
+ */
+function adminProblems({ admin, environments }: ProjectConfig): readonly string[] {
+    const withAdmin = Object.entries(environments).filter(([, definition]) => definition.adminUrl !== undefined);
+
+    if (admin === undefined) {
+        return withAdmin.map(([name]) => `environment "${name}" has an adminUrl, but the project declares no admin`);
+    }
+
+    if (withAdmin.length === 0) {
+        return ['admin is declared, but no environment says where the admin is (adminUrl)'];
+    }
+
+    return admin.onProduction === true
+        ? []
+        : withAdmin
+            .filter(([, definition]) => definition.production === true)
+            .map(([name]) => `environment "${name}" is production and has an adminUrl, but @admin tests run there only with admin.onProduction set`);
 }
 
 function testOrderPlacementProblems({ testOrderPlacements }: ProjectConfig): readonly string[] {

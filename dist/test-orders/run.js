@@ -4,6 +4,7 @@ exports.refuseTrace = refuseTrace;
 exports.startTestOrderRun = startTestOrderRun;
 exports.finishTestOrderRun = finishTestOrderRun;
 exports.describeAbandonment = describeAbandonment;
+const traces_1 = require("../safety/traces");
 const answers_1 = require("./answers");
 const carts_1 = require("./carts");
 const proof_1 = require("./proof");
@@ -15,14 +16,10 @@ const ABANDONMENT_WORDS = {
 };
 /**
  * Refuses a test of test orders that records a trace, whatever the mode: a trace keeps every request
- * header, so it would keep the proofs. Playwright's `trace` option names its mode directly or in an
- * object.
+ * header, so it would keep the proofs.
  */
 function refuseTrace(trace, title) {
-    const mode = typeof trace === 'string' ? trace : trace.mode;
-    if (mode !== 'off') {
-        throw new Error(`A trace keeps every proof of a test order, and "${title}" runs with trace ${mode}: add test.use({ trace: 'off' }) to its file.`);
-    }
+    (0, traces_1.refuseTrace)(trace, title, 'A trace keeps every proof of a test order');
 }
 /**
  * Starts the test orders of one test, once the shop has said it recognises the run: a runner it does

@@ -11,6 +11,12 @@ import type { EnvironmentVariables } from './variables';
  * only a production run has.
  */
 export type BaseUrlResolver = (store: RegisteredStore, variables: EnvironmentVariables) => string;
+/**
+ * How an environment names the address of the shop's admin, its front name included
+ * (`https://shop.test/backoffice/`); the variables are those of the run. The admin's path is the shop's own
+ * choice (`backend/frontName` in `env.php`), so each environment says it.
+ */
+export type AdminUrlResolver = (variables: EnvironmentVariables) => string;
 /** How far a test order goes: until the payment provider's window has opened, or paid up to the order confirmation. */
 export type OrderReach = 'payment-window' | 'success-page';
 /** One environment a project's tests run against: a local copy, a staging server, the live shop. */
@@ -30,6 +36,11 @@ export interface EnvironmentDefinition {
      * this says.
      */
     readonly paysTestOrders?: boolean;
+    /**
+     * Where the shop's admin is here, for the tests tagged `@admin`. Only a project that declares `admin`
+     * may give it; an environment without it has no admin the tests can reach.
+     */
+    readonly adminUrl?: AdminUrlResolver;
 }
 /**
  * Keeps the writes of a run against the live shop on the shop's own origins. Present means on.
@@ -39,6 +50,11 @@ export interface ProductionWriteGuard {
     readonly allowedOrigins?: readonly string[];
 }
 export interface HttpCredentials {
+    readonly username: string;
+    readonly password: string;
+}
+/** The admin user a run signs in as. Nothing the package writes ever names either value. */
+export interface AdminCredentials {
     readonly username: string;
     readonly password: string;
 }
@@ -93,6 +109,16 @@ export interface Environment {
     testOrderReach(): OrderReach;
     /** A setting of the project's own, trimmed; an empty one reads as unset. */
     variable(name: string): string | undefined;
+    /**
+     * The admin's address here, always with a trailing slash; nothing where the environment says no
+     * `adminUrl`. An address that is not an absolute http(s) URL is refused.
+     */
+    adminUrl(): string | undefined;
+    /**
+     * The admin user of the run (`E2E_ADMIN_USER`, `E2E_ADMIN_PASSWORD`); nothing unless both are set. The
+     * user name is trimmed, the password is taken as it is.
+     */
+    adminCredentials(): AdminCredentials | undefined;
 }
 /** What an environment needs to know about the project it belongs to. */
 export interface EnvironmentContext {

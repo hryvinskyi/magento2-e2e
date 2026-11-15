@@ -4,6 +4,7 @@ exports.DEFAULT_SCHEDULE = void 0;
 exports.default = preflight;
 exports.checkStorefront = checkStorefront;
 exports.projectInConfig = projectInConfig;
+exports.launchOptionsOf = launchOptionsOf;
 const test_1 = require("@playwright/test");
 const navigation_1 = require("../navigation");
 const project_1 = require("../project/project");
@@ -30,7 +31,7 @@ async function preflight(config) {
     const environment = project.environment();
     const url = environment.baseUrl(project.store(project.defaultStore));
     const credentials = environment.httpCredentials();
-    const browser = await test_1.chromium.launch();
+    const browser = await test_1.chromium.launch(launchOptionsOf(config.projects));
     try {
         const page = await browser.newPage({
             ...test_1.devices['Desktop Chrome'],
@@ -76,6 +77,17 @@ function projectInConfig(projects) {
             + 'setup of a config made by defineMagentoConfig().');
     }
     return project;
+}
+/**
+ * How the run's browser is launched: on the channel the config's `use` names (`channel: 'chrome'`, the
+ * Chrome installed on the machine), so the check opens the browser the tests open and needs no other;
+ * Playwright's own Chromium when it names none. Every project of a config `defineMagentoConfig()` made
+ * holds the config's `use`, so the first one says it.
+ */
+function launchOptionsOf(projects) {
+    const use = projects[0]?.use;
+    const channel = use !== undefined && 'channel' in use ? use.channel : undefined;
+    return typeof channel === 'string' && channel !== '' ? { channel } : {};
 }
 /**
  * Lets only the page itself be fetched: nothing of what it loads is part of the question, and on the

@@ -1,5 +1,5 @@
 import { chromium, devices } from '@playwright/test';
-import type { FullConfig, Page } from '@playwright/test';
+import type { FullConfig, LaunchOptions, Page } from '@playwright/test';
 import type { MagentoProject } from '../project/project';
 import { navigatesThePage } from '../navigation';
 import { isMagentoProject } from '../project/project';
@@ -42,7 +42,7 @@ export default async function preflight(config: FullConfig): Promise<void> {
     const environment = project.environment();
     const url = environment.baseUrl(project.store(project.defaultStore));
     const credentials = environment.httpCredentials();
-    const browser = await chromium.launch();
+    const browser = await chromium.launch(launchOptionsOf(config.projects));
 
     try {
         const page = await browser.newPage({
@@ -107,6 +107,19 @@ export function projectInConfig(projects: readonly { readonly use: object }[]): 
     }
 
     return project;
+}
+
+/**
+ * How the run's browser is launched: on the channel the config's `use` names (`channel: 'chrome'`, the
+ * Chrome installed on the machine), so the check opens the browser the tests open and needs no other;
+ * Playwright's own Chromium when it names none. Every project of a config `defineMagentoConfig()` made
+ * holds the config's `use`, so the first one says it.
+ */
+export function launchOptionsOf(projects: readonly { readonly use: object }[]): LaunchOptions {
+    const use = projects[0]?.use;
+    const channel = use !== undefined && 'channel' in use ? use.channel : undefined;
+
+    return typeof channel === 'string' && channel !== '' ? { channel } : {};
 }
 
 /**

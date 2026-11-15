@@ -2,6 +2,8 @@ export type { EnvironmentName, RegisteredStore, Register, Store, StoreCode, Stor
 
 export type { EnvironmentVariables } from './environment/variables';
 export type {
+    AdminCredentials,
+    AdminUrlResolver,
     BaseUrlResolver,
     Environment,
     EnvironmentDefinition,
@@ -29,6 +31,15 @@ export {
     TEST_ORDER_TAG,
     testOrderSafetyRule,
 } from './safety/safety-tags';
+
+export type { AdminSettings } from './safety/admin-tag';
+export { ADMIN_TAG } from './safety/admin-tag';
+
+export type { AdminMenuItemId, AdminMessageKind } from './admin/admin';
+export { Admin } from './admin/admin';
+export type { AdminSignIn, AdminStorageState } from './admin/admin-session';
+export { AdminSession } from './admin/admin-session';
+export { adminRouteOf } from './admin/admin-route';
 
 export { perStoreValue } from './stores/per-store-value';
 

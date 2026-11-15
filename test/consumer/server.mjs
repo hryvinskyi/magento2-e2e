@@ -2,7 +2,9 @@
 // address of the machine, so `localhost` and `127.0.0.1` are two origins of one server. Every request
 // it receives is appended to E2E_CONSUMER_LOG as one JSON line, which the runs read afterwards.
 //
-// It also answers the shop's test-order routes. The shop's secret is E2E_CONSUMER_SHOP_SECRET and not
+// It also answers the shop's test-order routes, and below /backoffice/ as the shop's admin: a sign-in form
+// for E2E_CONSUMER_ADMIN_USER and E2E_CONSUMER_ADMIN_PASSWORD, and a dashboard with a menu for a session.
+// The admin's user is the server's own setting for the same reason as the secret below. The shop's secret is E2E_CONSUMER_SHOP_SECRET and not
 // the runner's E2E_TEST_ORDER_SECRET: a web server inherits the run's environment, so with the runner's
 // variable the two could never disagree.
 import { Buffer } from 'node:buffer';
@@ -16,6 +18,12 @@ const log = process.env.E2E_CONSUMER_LOG;
 const homeStatus = Number(process.env.E2E_CONSUMER_HOME_STATUS ?? '200');
 const shopSecret = process.env.E2E_CONSUMER_SHOP_SECRET ?? '';
 const abandonedState = process.env.E2E_CONSUMER_ABANDONED_STATE ?? 'canceled';
+const adminUser = process.env.E2E_CONSUMER_ADMIN_USER ?? '';
+const adminPassword = process.env.E2E_CONSUMER_ADMIN_PASSWORD ?? '';
+
+/** The admin's sessions, by the value of their cookie. */
+const adminSessions = new Set();
+let sessionsMade = 0;
 
 if (!Number.isInteger(port) || port <= 0) {
     throw new Error('E2E_CONSUMER_PORT must name the port to listen on.');
@@ -116,6 +124,62 @@ function testOrderAnswer(request, path) {
         : PROOF_REFUSED;
 }
 
+const ADMIN = '/backoffice/';
+
+const SIGN_IN_PAGE = '<!doctype html><html><head><title>Sign in</title></head><body>'
+    + '<form method="post" action="" id="login-form"><input name="form_key" type="hidden" value="sign-in">'
+    + '<input name="login[username]" type="text"><input name="login[password]" type="password">'
+    + '<button type="submit">Sign in</button></form></body></html>';
+
+/**
+ * @param {string} title
+ * @returns {string}
+ */
+function adminPage(title) {
+    return `<!doctype html><html><head><title>${title}</title><script>var FORM_KEY = 'consumer-form-key';</script></head><body>`
+        + '<nav class="admin__menu"><ul>'
+        + `<li data-ui-id="menu-magento-backend-dashboard"><a href="${ADMIN}admin/dashboard/index/">Dashboard</a></li>`
+        + `<li data-ui-id="menu-magento-catalog-catalog-products"><a href="${ADMIN}catalog/product/index/">Products</a></li>`
+        + `</ul></nav><h1>${title}</h1></body></html>`;
+}
+
+/**
+ * The admin's answer to a request below its address, as the stock admin gives it: the sign-in form until
+ * the browser holds a session, then the page of the route.
+ *
+ * @param {http.IncomingMessage} request
+ * @param {string} path
+ * @param {string} body
+ * @returns {{ readonly status: number, readonly type: string, readonly body: string, readonly headers?: Record<string, string> }}
+ */
+function adminAnswer(request, path, body) {
+    const form = new URLSearchParams(body);
+    const cookie = /(?:^|;\s*)admin=([^;]+)/.exec(request.headers.cookie ?? '')?.[1];
+
+    if (request.method === 'POST' && form.has('login[username]')) {
+        if (adminUser === '' || form.get('login[username]') !== adminUser || form.get('login[password]') !== adminPassword) {
+            return { status: 200, type: 'text/html', body: SIGN_IN_PAGE };
+        }
+
+        sessionsMade += 1;
+
+        const session = `session-${String(sessionsMade)}`;
+
+        adminSessions.add(session);
+
+        return {
+            status: 302,
+            type: 'text/html',
+            body: '',
+            headers: { Location: `${ADMIN}admin/dashboard/index/`, 'Set-Cookie': `admin=${session}; Path=${ADMIN}; HttpOnly` },
+        };
+    }
+
+    return cookie !== undefined && adminSessions.has(cookie)
+        ? { status: 200, type: 'text/html', body: adminPage(path.slice(ADMIN.length).replace(/\/$/, '') || 'dashboard') }
+        : { status: 200, type: 'text/html', body: SIGN_IN_PAGE };
+}
+
 const server = http.createServer((request, response) => {
     /** @type {Buffer[]} */
     const chunks = [];
@@ -125,9 +189,19 @@ const server = http.createServer((request, response) => {
     });
     request.on('end', () => {
         const path = request.url ?? '/';
+        const body = Buffer.concat(chunks).toString('utf8');
 
         if (path !== '/ready') {
-            record(request, Buffer.concat(chunks).toString('utf8'));
+            record(request, body);
+        }
+
+        if (path.startsWith(ADMIN)) {
+            const admin = adminAnswer(request, path, body);
+
+            response.writeHead(admin.status, { 'Content-Type': admin.type, 'Cache-Control': 'no-store', ...admin.headers });
+            response.end(admin.body);
+
+            return;
         }
 
         const answer = testOrderAnswer(request, path)

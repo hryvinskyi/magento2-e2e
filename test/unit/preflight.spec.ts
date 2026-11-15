@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { PreflightSchedule, StorefrontProbe } from '../../src/config/preflight';
-import { checkStorefront, DEFAULT_SCHEDULE, projectInConfig } from '../../src/config/preflight';
+import { checkStorefront, DEFAULT_SCHEDULE, launchOptionsOf, projectInConfig } from '../../src/config/preflight';
 import { defineProject } from '../../src/project/project';
 import { sampleConfig } from './sample-project';
 
@@ -81,4 +81,15 @@ test('a config without the project is refused, naming the factory', () => {
     expect(() => projectInConfig([])).toThrow(refusal);
     expect(() => projectInConfig([{ use: {} }])).toThrow(refusal);
     expect(() => projectInConfig([{ use: { magentoProject: copied } }])).toThrow(refusal);
+});
+
+test('the check launches the browser on the channel the config names', () => {
+    expect(launchOptionsOf([{ use: { channel: 'chrome' } }, { use: {} }])).toEqual({ channel: 'chrome' });
+});
+
+test('the check launches Playwright\'s own Chromium when the config names no channel', () => {
+    expect(launchOptionsOf([])).toEqual({});
+    expect(launchOptionsOf([{ use: {} }])).toEqual({});
+    expect(launchOptionsOf([{ use: { channel: '' } }])).toEqual({});
+    expect(launchOptionsOf([{ use: { channel: undefined } }])).toEqual({});
 });

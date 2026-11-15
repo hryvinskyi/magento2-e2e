@@ -1,6 +1,7 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import type { Environment, EnvironmentDefinition, ProductionWriteGuard } from '../environment/environment';
 import type { EnvironmentVariables } from '../environment/variables';
+import type { AdminSettings } from '../safety/admin-tag';
 import type { SafetyTagRule } from '../safety/safety-tags';
 import type { PlacementRoute } from '../test-orders/placement';
 import type { ShopClient } from '../test-orders/shop';
@@ -65,6 +66,12 @@ export interface ProjectConfig {
      * browser. `TestOrderPlacementTerms.client` says what that gives up.
      */
     readonly shopClient?: ShopClient;
+    /**
+     * The shop's admin, for tests tagged `@admin`: present, the project has the tag, and each environment
+     * whose admin the tests may reach says where it is with `adminUrl`. `admin: {}` keeps `@admin` off the
+     * live shop; `{ onProduction: true }` lets it run there.
+     */
+    readonly admin?: AdminSettings;
 }
 /** A checked project definition, as `defineProject` returns it. */
 export interface MagentoProject {
@@ -84,7 +91,7 @@ export interface MagentoProject {
     /** The store with this code; an unknown code is refused with the known ones. */
     store(code: string): RegisteredStore;
     stores(): readonly RegisteredStore[];
-    /** Every safety tag of the project: `@readonly`, `@cart`, `@mutating`, then the project's own. */
+    /** Every safety tag of the project: `@readonly`, `@cart`, `@mutating`, the project's own, then `@admin` when it has an admin. */
     safetyTags(): readonly string[];
 }
 /**

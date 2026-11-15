@@ -88,6 +88,24 @@ class RunEnvironment {
     variable(name) {
         return (0, variables_1.setting)(this.variables, name);
     }
+    adminUrl() {
+        const resolve = this.definition.adminUrl;
+        if (resolve === undefined) {
+            return undefined;
+        }
+        const address = resolve(this.variables);
+        if (!isHttpAddress(address)) {
+            throw new Error(`The admin of ${this.name} must be at an absolute http(s) URL; adminUrl gave "${address}".`);
+        }
+        return withTrailingSlash(address);
+    }
+    adminCredentials() {
+        const username = (0, variables_1.setting)(this.variables, 'E2E_ADMIN_USER');
+        const password = this.variables.E2E_ADMIN_PASSWORD;
+        return username === undefined || password === undefined || password === ''
+            ? undefined
+            : { username, password };
+    }
     /**
      * The domains of the live shop: each store's host in every environment marked production, without
      * a leading `www.`. They come from the environments' own resolvers, never from an

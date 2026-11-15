@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.projectProblems = projectProblems;
 const node_path_1 = require("node:path");
+const admin_tag_1 = require("../safety/admin-tag");
 const safety_tags_1 = require("../safety/safety-tags");
 const answers_1 = require("../test-orders/answers");
 const shop_1 = require("../test-orders/shop");
@@ -17,6 +18,7 @@ function projectProblems(config) {
         ...safetyTagProblems(config),
         ...testOrderPlacementProblems(config),
         ...shopClientProblems(config),
+        ...adminProblems(config),
     ];
 }
 function magentoRootProblems(config) {
@@ -61,7 +63,26 @@ function safetyTagProblems(config) {
     return Object.keys(config.safetyTags ?? {}).flatMap(tag => [
         ...(tag.startsWith('@') ? [] : [`the safety tag "${tag}" must start with "@"`]),
         ...((0, safety_tags_1.isCoreSafetyTag)(tag) ? [`the safety tag "${tag}" is a core tag and cannot be redefined`] : []),
+        ...(tag === admin_tag_1.ADMIN_TAG ? [`the safety tag "${tag}" comes with admin in the project definition and cannot be defined in safetyTags`] : []),
     ]);
+}
+/**
+ * An admin nobody can reach, an address of an admin the project does not have, and the address of the
+ * live shop's admin in a project that keeps `@admin` off the live shop: each says two things at once.
+ */
+function adminProblems({ admin, environments }) {
+    const withAdmin = Object.entries(environments).filter(([, definition]) => definition.adminUrl !== undefined);
+    if (admin === undefined) {
+        return withAdmin.map(([name]) => `environment "${name}" has an adminUrl, but the project declares no admin`);
+    }
+    if (withAdmin.length === 0) {
+        return ['admin is declared, but no environment says where the admin is (adminUrl)'];
+    }
+    return admin.onProduction === true
+        ? []
+        : withAdmin
+            .filter(([, definition]) => definition.production === true)
+            .map(([name]) => `environment "${name}" is production and has an adminUrl, but @admin tests run there only with admin.onProduction set`);
 }
 function testOrderPlacementProblems({ testOrderPlacements }) {
     if (testOrderPlacements === undefined) {

@@ -1,4 +1,4 @@
-import type { FullConfig } from '@playwright/test';
+import type { FullConfig, LaunchOptions } from '@playwright/test';
 import type { MagentoProject } from '../project/project';
 /** Asks for a page and says how it answered. */
 export interface StorefrontProbe {
@@ -36,3 +36,12 @@ export declare function checkStorefront(environmentName: string, url: string, pr
 export declare function projectInConfig(projects: readonly {
     readonly use: object;
 }[]): MagentoProject;
+/**
+ * How the run's browser is launched: on the channel the config's `use` names (`channel: 'chrome'`, the
+ * Chrome installed on the machine), so the check opens the browser the tests open and needs no other;
+ * Playwright's own Chromium when it names none. Every project of a config `defineMagentoConfig()` made
+ * holds the config's `use`, so the first one says it.
+ */
+export declare function launchOptionsOf(projects: readonly {
+    readonly use: object;
+}[]): LaunchOptions;

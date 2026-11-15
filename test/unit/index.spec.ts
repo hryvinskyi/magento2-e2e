@@ -1,8 +1,11 @@
 import { expect, test } from '@playwright/test';
 import * as entry from '../../src/index';
 
-test('the public entry exports the project, environment, safety-tag, per-store, module, browser, test-order and config functions', () => {
+test('the public entry exports the project, environment, safety-tag, admin, per-store, module, browser, test-order and config functions', () => {
     expect(Object.keys(entry).sort()).toEqual([
+        'ADMIN_TAG',
+        'Admin',
+        'AdminSession',
         'Arrivals',
         'BrowserShopRequests',
         'CART_TAG',
@@ -21,6 +24,7 @@ test('the public entry exports the project, environment, safety-tag, per-store, 
         'TestOrderContractError',
         'TestOrderProofs',
         'TestOrders',
+        'adminRouteOf',
         'blockedHosts',
         'clickInside',
         'consentCookie',

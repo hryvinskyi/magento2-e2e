@@ -15,6 +15,8 @@ parts every Magento end-to-end suite ends up rebuilding into one tested package:
   origins;
 - **test orders**: real orders a shop with `hryvinskyi/magento2-test-order` recognises and ends again, so a
   run can go through the whole checkout without an ordinary order being placed;
+- **the admin**: a signed-in admin page per test, one sign-in per worker, pages opened the way the admin's
+  secret keys allow, and the admin's messages, loading masks and form key;
 - Node loaders that run a module's **AMD script** or the shop's **jQuery** without a browser;
 - **CI tooling**: a workflow, a deployment hook, a shared report behind a login, and a summary e-mail.
 
@@ -29,7 +31,7 @@ has exactly one copy of the runner), TypeScript 5.x.
 
 ```
 echo 'allow-git=root' >> .npmrc
-npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.2.0"
+npm install --save-dev "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.3.0"
 ```
 
 npm 12 refuses git dependencies unless the project opts in, which that line in `.npmrc` does; earlier
@@ -216,7 +218,8 @@ state built while the runner started.
 **The preflight.** Before any test starts, the run opens the default store's home page in Chromium, with
 the run's login and user agent and without anything the page would load, up to three times, ten seconds
 apart. If it never answers 200, the run stops with one message instead of half an hour of red retries. It
-is the browser the tests use, so a firewall that challenges other clients lets it through as it does them.
+is the browser the tests use, on the channel the config's `use` names (`playwright: { use: { channel: 'chrome' } }`
+runs it in the installed Chrome), so a firewall that challenges other clients lets it through as it does them.
 It does make every run, a Node-only module spec included, need a site: use `E2E_PREFLIGHT=off` (or
 `preflight: false` in the config) for a run that needs none.
 
@@ -282,7 +285,8 @@ test('the French home page names the shop', { tag: READONLY_TAG }, async ({ stor
 
 Fixtures: `storefront` (the store `storeCode` picks, the project's default when unset), `storefrontOf(code)`
 (any other store on the same page, to compare two stores), `freshGuest()` (starts over as a new guest on
-the same page and the same guarded context), `environment` (the run's environment), `testOrders` (see *Test orders*), and the
+the same page and the same guarded context), `environment` (the run's environment), `testOrders` (see *Test orders*),
+`admin` (see *The admin*), and the
 automatic `safetyGuard` and `searchServiceGuard`. `storefront.open(path)` and `storefront.url(path)` take a path
 relative to the store's base URL, so a store below a path keeps working.
 
@@ -306,6 +310,7 @@ one.
 | `@cart` | create a guest cart, walk the checkout up to the pay button | yes |
 | `@mutating` | anything that persists: place an order, register or log in a customer, submit a form | never |
 | `@order` | place a test order the shop recognises, and abandon it; a project opts in with `testOrderSafetyRule` | up to the payment window, with `productionWriteGuard` |
+| `@admin` | sign in to the admin and work there; a project opts in with `admin` | only with `admin: { onProduction: true }` |
 
 Your project adds tags (`safetyTags` in the definition) beside these; the project's tag may also carry a
 refusal, as `testOrderSafetyRule` does: it refuses `@order` in a run that has no secret to sign requests
@@ -495,6 +500,115 @@ Against `'runner'`, the placement gives up two things:
 **A client of your own.** A project overrides the `shopRequests` fixture with `test.extend`, and the run's
 proofs go through the client it gives. `shopClient` still says who sends the signed placement.
 
+## The admin
+
+A test in the shop's admin signs in as an admin user of the run, works on pages of the admin, and reads
+what the admin shows. Magento's admin differs from the storefront in three ways that shape this part of
+the package: its address is the shop's own choice, it is reached only with a session, and with
+`admin/security/use_form_key` on every address in it carries a secret key.
+
+**Adding the admin.** A project declares `admin` and says, per environment, where the admin is. The
+`@admin` tag comes with it:
+
+```ts
+export const ENVIRONMENTS: { readonly local: EnvironmentDefinition; readonly production: EnvironmentDefinition } = {
+    local: {
+        baseUrl: store => `https://shop.test${store.path}`,
+        adminUrl: () => 'https://shop.test/backoffice/',   // backend/frontName in app/etc/env.php
+        ignoreHttpsErrors: true,
+    },
+    production: { baseUrl: store => `https://www.example.com${store.path}`, production: true },
+};
+
+export const project = defineProject({
+    // ...
+    environments: ENVIRONMENTS,
+    admin: {},
+});
+```
+
+`adminUrl(variables)` is a resolver like `baseUrl`, so an address can come from a setting. Give the address
+the admin's own links use: a shop that serves its admin with `index.php` in the path (URL rewrites off for
+it) has `https://shop.test/index.php/backoffice/`, and a sign-in that ends at another address says so. `defineProject()`
+refuses an admin no environment has an address for, an `adminUrl` in a project without `admin`, the live
+shop's `adminUrl` in a project that keeps `@admin` off the live shop, and `@admin` among `safetyTags`.
+
+**Where it runs.** An `@admin` test is skipped where the environment has no `adminUrl` and where the run
+lacks `E2E_ADMIN_USER` or `E2E_ADMIN_PASSWORD`, saying which. On a run that targets the live shop it is
+skipped unless the project says `admin: { onProduction: true }`: that admin holds the shop's real
+customers, orders and configuration. Give each environment an admin user of its own, made for the tests,
+with a role that allows only what they need.
+
+**The credentials** come from the run only, never from the definition. The package never prints them:
+they are in no error message and no step of the report, and the sign-in fills the form through a script,
+because a typing step is reported with the text it typed.
+
+**A test.**
+
+```ts
+import { ADMIN_TAG, expect, test } from '@hryvinskyi/magento2-e2e';
+
+test.use({ trace: 'off' });
+
+test('a saved product says so', { tag: ADMIN_TAG }, async ({ admin }) => {
+    await admin.openMenuItem('menu-magento-catalog-catalog-products');
+    await admin.settled();
+    await admin.follow(admin.page.getByRole('link', { name: 'Edit' }).first());
+
+    expect(admin.route()).toMatch(/^catalog\/product\/edit\/id\/\d+$/);
+
+    await admin.page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(admin.messages('success')).toContainText('You saved the product.');
+});
+```
+
+- `admin` is a page of a context of its own, signed in. The test's `page` and `storefront` stay the
+  storefront's, without the admin's session, so one test can change a setting in the admin and look at the
+  storefront as a visitor.
+- The context has the project's blocked requests and, on a guarded run, the write guard, with the admin's
+  origin among the shop's. It records no video.
+- A test without the tag that asks for `admin` fails before anything reaches the shop, and so does a test
+  in a project without `admin`.
+
+**Traces.** A trace keeps the sign-in and the session cookie, so the `admin` fixture refuses a test whose
+trace is not off, before it signs in. A file of `@admin` tests sets `test.use({ trace: 'off' })` at its top
+level. Screenshots and evidence stay.
+
+**One sign-in per worker.** The worker signs in when its first test asks for `admin`, in a context of its
+own that is closed again, and hands the session to every later test of the worker. It is kept in memory,
+never in a file. A sign-in that fails fails with one message instead of a timeout — wrong credentials, a
+CAPTCHA, Magento's two-factor authentication, a sign-in handed to another site — and is not tried again in
+that worker: each further attempt with a wrong password brings the user closer to being locked.
+
+- **Two-factor authentication** (the module `Magento_TwoFactorAuth`) stops a scripted sign-in. Disable it on
+  the environments the tests sign in to, or set the test user up for a provider the run can answer.
+- **The admin's CAPTCHA** appears after failed sign-ins, or always where `backend_login` is among its forms.
+  Switch it off for the sign-in on those environments.
+- **Account sharing.** A second sign-in of the same user ends the first session unless
+  `admin/security/admin_account_sharing` is on, and every worker signs in. Turn it on for the test
+  environments, or run the admin tests in one worker. A page that shows the sign-in form fails the test,
+  saying so.
+
+**Opening a page.** With secret keys on, an address typed by hand lands on the dashboard. The key is a hash
+of the route and the session's form key made with the shop's encryption key, which a test does not have,
+so there is no "open this route" helper: nothing could build that address honestly. A test reaches a page
+the way a person does:
+
+| Method | Does |
+|---|---|
+| `open()` | opens the admin's start page at the admin's own address, which needs no key |
+| `openMenuItem(id)` | opens the address an item of the admin menu gives, by the `data-ui-id` it holds (`menu-magento-catalog-catalog-products`); the menu is read from the start page when the current page lacks the item; an item that only opens a submenu is refused |
+| `follow(link)` | opens the address of a link the page shows, key and all |
+| `route()` | the page's route below the admin's address without the key and the query, `catalog/product/edit/id/5`, the same with keys on and off; a controller or action the address leaves out reads `index` (`catalog/product/` is `catalog/product/index`); `adminRouteOf(url, adminUrl)` reads any address |
+
+Every page these open is checked for the session.
+
+**Admin mechanics.** `messages(kind)` is the messages area, where a save says what it did (`success`,
+`error`, `warning`, `notice`). `settled()` waits until the page has loaded and no loading mask or spinner
+is shown; call it again after a click that loads data. `formKey()` is the page's form key, for a request
+of the test's own through the page's session: `admin.page.request.post(url, { form: { form_key: await
+admin.formKey(), ... } })`.
+
 ## Environment variables
 
 | Variable | Meaning |
@@ -506,6 +620,7 @@ proofs go through the client it gives. `shopClient` still says who sends the sig
 | `E2E_SEARCH_SERVICE` | `on` (default) or `off`; `off` is accepted only where the environment is `searchServiceOptional` |
 | `E2E_PREFLIGHT` | `on` (default) or `off`; `off` skips the check that the default store answers |
 | `E2E_TEST_ORDER_SECRET` | the secret test orders are signed with, one per environment; unset, `@order` tests are skipped |
+| `E2E_ADMIN_USER`, `E2E_ADMIN_PASSWORD` | the admin user `@admin` tests sign in as; unless both are set, `@admin` tests are skipped |
 | `E2E_EVIDENCE` | `1` keeps every test's video and screenshots and writes the report results |
 | `E2E_WEBKIT` | any value also runs Safari's engine |
 | `E2E_<NAME>_<STORE CODE>` | replaces a value recorded with `perStoreValue(NAME, ...)` |
@@ -592,7 +707,7 @@ address. The package ships no token of its own.
 Move to a release with one command that names its tag:
 
 ```
-npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.2.0"
+npm install --save-dev --allow-git=all "@hryvinskyi/magento2-e2e@git+https://github.com/hryvinskyi/magento2-e2e.git#v1.3.0"
 ```
 
 Editing the tag in `package.json` is not enough: npm 10 quietly keeps the locked commit, and npm 11 and 12

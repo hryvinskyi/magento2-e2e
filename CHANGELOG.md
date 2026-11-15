@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0
+
+- The admin: `admin` in `defineProject`, and `adminUrl` per environment for where the admin is. `defineProject()`
+  refuses an admin no environment has an address for, an `adminUrl` in a project without `admin`, the live shop's
+  `adminUrl` while `@admin` may not run there, and `@admin` among `safetyTags`.
+- The `@admin` safety tag comes with `admin`. A test carrying it is skipped where the environment has no `adminUrl`,
+  without `E2E_ADMIN_USER` and `E2E_ADMIN_PASSWORD`, and on a run that targets the live shop unless the project says
+  `admin: { onProduction: true }`.
+- The `admin` fixture: an `Admin` on a page of its own context, signed in with the worker's session. Only an
+  `@admin` test with its trace off may ask for it; any other fails before anything reaches the shop.
+- The `adminSession` worker fixture signs in once per worker, when its first test asks, and fails with one message
+  for wrong credentials, a CAPTCHA, two-factor authentication or a sign-in handed to another site. A failed sign-in
+  is not tried again in that worker. The credentials appear in no message and no step of the report.
+- `Admin.open()`, `openMenuItem(id)` and `follow(link)` open pages that work whether the shop puts secret keys in
+  its admin addresses or not; `route()` and `adminRouteOf()` read an address's route without the key. A page that
+  shows the sign-in form fails the test, saying why sessions end. `messages(kind)`, `settled()` and `formKey()`.
+- `Environment.adminUrl()` and `adminCredentials()`.
+- The starter project holds the admin's lines, commented, and `.env.example` the two variables.
+- The preflight opens the browser on the channel the config's `use` names, such as `channel: 'chrome'`, instead of
+  always Playwright's own Chromium, which a project on the installed Chrome may not have downloaded. Without a
+  channel nothing changes.
+
 ## 1.2.0
 
 - A project declares the addresses its checkouts place a cart at: `testOrderPlacements` in `defineProject`,

@@ -22,6 +22,8 @@ export const ENVIRONMENTS: {
         baseUrl: store => `https://shop.test${store.path}`,
         // A local copy usually has a certificate the browser cannot verify.
         ignoreHttpsErrors: true,
+        // Where the admin is, for @admin tests: the admin's front name is backend/frontName in app/etc/env.php.
+        // adminUrl: () => 'https://shop.test/admin/',
     },
     staging: {
         baseUrl: (store, variables) => `${variables.E2E_STAGING_URL ?? 'https://staging.example.com'}${store.path}`,
@@ -56,4 +58,7 @@ export const project: MagentoProject = defineProject({
     // Records consent before the first page opens, so no consent banner covers it. Replace the
     // cookie's name and value with what the shop's consent banner reads, or delete the line.
     consent: consentCookie('visitor-consent', 'necessary-only'),
+    // Gives the project the @admin tag, for tests that sign in to the admin as E2E_ADMIN_USER. An environment
+    // with an adminUrl is one they reach; { onProduction: true } would also let them reach the live shop's.
+    // admin: {},
 });

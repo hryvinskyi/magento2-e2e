@@ -1,10 +1,17 @@
 export type { EnvironmentName, RegisteredStore, Register, Store, StoreCode, StoreMap } from './project/stores';
 export type { EnvironmentVariables } from './environment/variables';
-export type { BaseUrlResolver, Environment, EnvironmentDefinition, HttpCredentials, OrderReach, ProductionWriteGuard, } from './environment/environment';
+export type { AdminCredentials, AdminUrlResolver, BaseUrlResolver, Environment, EnvironmentDefinition, HttpCredentials, OrderReach, ProductionWriteGuard, } from './environment/environment';
 export type { ConsentPolicy, DeferredAssets, MagentoProject, PageGuard, ProjectConfig, StorefrontBehaviour, } from './project/project';
 export { defineProject, isMagentoProject } from './project/project';
 export type { SafetyTagRule } from './safety/safety-tags';
 export { CART_TAG, MUTATING_TAG, READONLY_TAG, SEARCH_SERVICE_TAG, TEST_ORDER_TAG, testOrderSafetyRule, } from './safety/safety-tags';
+export type { AdminSettings } from './safety/admin-tag';
+export { ADMIN_TAG } from './safety/admin-tag';
+export type { AdminMenuItemId, AdminMessageKind } from './admin/admin';
+export { Admin } from './admin/admin';
+export type { AdminSignIn, AdminStorageState } from './admin/admin-session';
+export { AdminSession } from './admin/admin-session';
+export { adminRouteOf } from './admin/admin-route';
 export { perStoreValue } from './stores/per-store-value';
 export type { ModuleSource, ModuleTests } from './modules/module-tests';
 export { enabledModules, moduleTests } from './modules/module-tests';

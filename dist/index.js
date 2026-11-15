@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.defineMagentoConfig = exports.DEFAULT_DEVICES = exports.loadMagentoJQuery = exports.loadAmdModule = exports.pageModule = exports.ClickReports = exports.Arrivals = exports.RequestsInFlight = exports.tabToNextControl = exports.keepsEvidence = exports.evidence = exports.describeAbandonment = exports.signTestOrderPlacements = exports.judgePlacement = exports.GUEST_PAYMENT_INFORMATION = exports.TestOrderCarts = exports.BrowserShopRequests = exports.TestOrders = exports.TestOrderContractError = exports.parseAbandonedTestOrder = exports.TestOrderProofs = exports.TEST_ORDER_PROOF_HEADER = exports.systemClock = exports.signTestOrderProof = exports.RECOGNITION_SUBJECT = exports.test = exports.expect = exports.sessionStorageFlag = exports.dismissOnSight = exports.clickInside = exports.blockedHosts = exports.consentCookie = exports.Storefront = exports.moduleTests = exports.enabledModules = exports.perStoreValue = exports.testOrderSafetyRule = exports.TEST_ORDER_TAG = exports.SEARCH_SERVICE_TAG = exports.READONLY_TAG = exports.MUTATING_TAG = exports.CART_TAG = exports.isMagentoProject = exports.defineProject = void 0;
+exports.defineMagentoConfig = exports.DEFAULT_DEVICES = exports.loadMagentoJQuery = exports.loadAmdModule = exports.pageModule = exports.ClickReports = exports.Arrivals = exports.RequestsInFlight = exports.tabToNextControl = exports.keepsEvidence = exports.evidence = exports.describeAbandonment = exports.signTestOrderPlacements = exports.judgePlacement = exports.GUEST_PAYMENT_INFORMATION = exports.TestOrderCarts = exports.BrowserShopRequests = exports.TestOrders = exports.TestOrderContractError = exports.parseAbandonedTestOrder = exports.TestOrderProofs = exports.TEST_ORDER_PROOF_HEADER = exports.systemClock = exports.signTestOrderProof = exports.RECOGNITION_SUBJECT = exports.test = exports.expect = exports.sessionStorageFlag = exports.dismissOnSight = exports.clickInside = exports.blockedHosts = exports.consentCookie = exports.Storefront = exports.moduleTests = exports.enabledModules = exports.perStoreValue = exports.adminRouteOf = exports.AdminSession = exports.Admin = exports.ADMIN_TAG = exports.testOrderSafetyRule = exports.TEST_ORDER_TAG = exports.SEARCH_SERVICE_TAG = exports.READONLY_TAG = exports.MUTATING_TAG = exports.CART_TAG = exports.isMagentoProject = exports.defineProject = void 0;
 var project_1 = require("./project/project");
 Object.defineProperty(exports, "defineProject", { enumerable: true, get: function () { return project_1.defineProject; } });
 Object.defineProperty(exports, "isMagentoProject", { enumerable: true, get: function () { return project_1.isMagentoProject; } });
@@ -11,6 +11,14 @@ Object.defineProperty(exports, "READONLY_TAG", { enumerable: true, get: function
 Object.defineProperty(exports, "SEARCH_SERVICE_TAG", { enumerable: true, get: function () { return safety_tags_1.SEARCH_SERVICE_TAG; } });
 Object.defineProperty(exports, "TEST_ORDER_TAG", { enumerable: true, get: function () { return safety_tags_1.TEST_ORDER_TAG; } });
 Object.defineProperty(exports, "testOrderSafetyRule", { enumerable: true, get: function () { return safety_tags_1.testOrderSafetyRule; } });
+var admin_tag_1 = require("./safety/admin-tag");
+Object.defineProperty(exports, "ADMIN_TAG", { enumerable: true, get: function () { return admin_tag_1.ADMIN_TAG; } });
+var admin_1 = require("./admin/admin");
+Object.defineProperty(exports, "Admin", { enumerable: true, get: function () { return admin_1.Admin; } });
+var admin_session_1 = require("./admin/admin-session");
+Object.defineProperty(exports, "AdminSession", { enumerable: true, get: function () { return admin_session_1.AdminSession; } });
+var admin_route_1 = require("./admin/admin-route");
+Object.defineProperty(exports, "adminRouteOf", { enumerable: true, get: function () { return admin_route_1.adminRouteOf; } });
 var per_store_value_1 = require("./stores/per-store-value");
 Object.defineProperty(exports, "perStoreValue", { enumerable: true, get: function () { return per_store_value_1.perStoreValue; } });
 var module_tests_1 = require("./modules/module-tests");

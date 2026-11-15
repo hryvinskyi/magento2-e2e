@@ -18,4 +18,6 @@ interface Window {
         onLoad: (...modules: unknown[]) => void,
         onError?: (error: unknown) => void,
     ) => void;
+    /** The form key of an admin page's session, which the admin prints for its own scripts. Absent elsewhere. */
+    readonly FORM_KEY?: unknown;
 }

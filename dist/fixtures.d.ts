@@ -1,4 +1,6 @@
 import type { PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, TestType } from '@playwright/test';
+import { Admin } from './admin/admin';
+import { AdminSession } from './admin/admin-session';
 import type { Environment } from './environment/environment';
 import type { MagentoProject } from './project/project';
 import type { StoreCode } from './project/stores';
@@ -40,6 +42,13 @@ export interface MagentoTestFixtures {
      * overrides it with `test.extend`.
      */
     shopRequests: ShopRequests;
+    /**
+     * The shop's admin, on a page of its own context that holds the worker's admin session: the admin's
+     * address, the run's admin user, the project's blocked requests and, on a guarded run, the write guard
+     * with the admin's origin among the shop's. Only a test tagged `@admin`, in a project that declares
+     * `admin`, may ask for it, and only with its trace off: a trace would keep the session cookie.
+     */
+    admin: Admin;
     /** Enforces the safety tag of every test; never requested by name. */
     safetyGuard: undefined;
     /** Skips a test that needs the search service where it is switched off; never requested by name. */
@@ -48,6 +57,11 @@ export interface MagentoTestFixtures {
 export interface MagentoWorkerFixtures {
     /** The environment this run targets. */
     environment: Environment;
+    /**
+     * The admin session of this worker: it signs in when the first `admin` fixture of the worker asks for
+     * it, never before, and every later test of the worker gets the same session. Tests use `admin`.
+     */
+    adminSession: AdminSession;
 }
 /**
  * Playwright's `test`, with the project's stores, environment and protections: every test declares

@@ -29,6 +29,8 @@ export interface Received {
 export interface ConsumerRun {
     readonly exitCode: number | null;
     readonly report: Report;
+    /** The JSON report as the run wrote it, for what no parsed field holds: the steps, attachments and output of every test. */
+    readonly reportText: string;
     /** Every request that reached the page server, in order. */
     readonly received: readonly Received[];
     /** The port the run's page server listened on. */
@@ -105,9 +107,12 @@ export async function runConsumer(settings: RunSettings = {}): Promise<ConsumerR
             throw new Error(`The consumer run (exit code ${String(exitCode)}) wrote no report.`);
         }
 
+        const reportText = fs.readFileSync(reportFile, 'utf8');
+
         return {
             exitCode,
-            report: parseReport(fs.readFileSync(reportFile, 'utf8')),
+            report: parseReport(reportText),
+            reportText,
             received: fs.existsSync(logFile) ? parseLog(fs.readFileSync(logFile, 'utf8')) : [],
             port,
             durationMs,

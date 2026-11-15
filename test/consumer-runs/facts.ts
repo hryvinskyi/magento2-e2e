@@ -2,7 +2,7 @@ import type { Received } from './consumer-run';
 import type { Report, ReportedTest } from './report';
 
 /** What a test without exactly one safety tag fails with. */
-export const SAFETY_MESSAGE = 'A test declares exactly one of @readonly, @cart, @mutating, @order;';
+export const SAFETY_MESSAGE = 'A test declares exactly one of @readonly, @cart, @mutating, @order, @admin;';
 
 /** The project names a run of the consumer has: two browsers, each over the four suites. */
 export const PROJECT_NAMES: readonly string[] = [

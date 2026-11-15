@@ -1,5 +1,6 @@
 import type { PlaywrightWorkerOptions, TestInfo } from '@playwright/test';
 import type { Environment, OrderReach } from '../environment/environment';
+import { refuseTrace as refuseAnyTrace } from '../safety/traces';
 import type { Storefront } from '../storefront/storefront';
 import { reportableMessageOf } from './answers';
 import { TestOrderCarts } from './carts';
@@ -54,15 +55,10 @@ export interface TestOrderRunStart {
 
 /**
  * Refuses a test of test orders that records a trace, whatever the mode: a trace keeps every request
- * header, so it would keep the proofs. Playwright's `trace` option names its mode directly or in an
- * object.
+ * header, so it would keep the proofs.
  */
 export function refuseTrace(trace: PlaywrightWorkerOptions['trace'], title: string): void {
-    const mode = typeof trace === 'string' ? trace : trace.mode;
-
-    if (mode !== 'off') {
-        throw new Error(`A trace keeps every proof of a test order, and "${title}" runs with trace ${mode}: add test.use({ trace: 'off' }) to its file.`);
-    }
+    refuseAnyTrace(trace, title, 'A trace keeps every proof of a test order');
 }
 
 /**

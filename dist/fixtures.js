@@ -2,8 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.expect = exports.test = void 0;
 const test_1 = require("@playwright/test");
+const admin_1 = require("./admin/admin");
+const admin_session_1 = require("./admin/admin-session");
 const project_1 = require("./project/project");
+const admin_tag_1 = require("./safety/admin-tag");
 const safety_tags_1 = require("./safety/safety-tags");
+const traces_1 = require("./safety/traces");
 const blocked_requests_1 = require("./storefront/blocked-requests");
 const fresh_guest_1 = require("./storefront/fresh-guest");
 const storefront_1 = require("./storefront/storefront");
@@ -79,6 +83,27 @@ exports.test = test_1.test.extend({
     shopRequests: async ({ context, page, storefront, magentoProject }, use) => {
         await SHOP_REQUESTS[projectOf(magentoProject).shopClient]({ context, page, storefront }, use);
     },
+    adminSession: [
+        async ({ browser, environment }, use) => {
+            await use(new admin_session_1.AdminSession(() => (0, admin_session_1.signInToAdmin)(browser, adminTargetOf(environment))));
+        },
+        { scope: 'worker' },
+    ],
+    // The checks come before the session is asked for, so a test refused here never reaches the admin;
+    // the safety guard has already skipped a test the environment or the run cannot take.
+    admin: async ({ browser, adminSession, environment, magentoProject, trace }, use, testInfo) => {
+        const project = projectOf(magentoProject);
+        (0, admin_tag_1.requireAdminTag)(project.safetyTags(), testInfo.tags, testInfo.title);
+        (0, traces_1.refuseTrace)(trace, testInfo.title, 'A trace keeps the admin\'s sign-in and its session cookie');
+        const { adminUrl } = adminTargetOf(environment);
+        const context = await openAdminContext(browser, await adminSession.storageState());
+        await (0, blocked_requests_1.blockRequests)(context, project.blockedRequests);
+        if (environment.guardsWrites()) {
+            await (0, write_guard_1.keepWritesOnTheShop)(context, new Set([...environment.shopOrigins(), new URL(adminUrl).origin]));
+        }
+        await use(new admin_1.Admin(await context.newPage(), adminUrl));
+        await context.close();
+    },
     // A fixture, not a `finally` in the test: Playwright tears a fixture down after a failed and after a
     // timed-out test. It depends on the storefront's page and on the client, so it is torn down before
     // either is, and the last abandon still has the client's page. The safety guard runs first, so a
@@ -122,6 +147,22 @@ function projectOf(value) {
         throw new Error('The tests run without a Magento project: build the Playwright config with defineMagentoConfig()');
     }
     return value;
+}
+/** Where the admin of the run is and who signs in to it; a run without either is refused, saying which. */
+function adminTargetOf(environment) {
+    const adminUrl = environment.adminUrl();
+    const credentials = environment.adminCredentials();
+    if (adminUrl === undefined) {
+        throw new Error(`The environment ${environment.name} says nowhere where the admin is: give it an adminUrl.`);
+    }
+    if (credentials === undefined) {
+        throw new Error('The admin is signed in to only with E2E_ADMIN_USER and E2E_ADMIN_PASSWORD set.');
+    }
+    return { adminUrl, credentials };
+}
+/** A context of its own for an admin test, opened with the worker's session. */
+function openAdminContext(browser, storageState) {
+    return browser.newContext({ storageState });
 }
 /** Fails a test that sent a placement without signing it: the page may have swallowed the aborted request. */
 function refuseUnsignedPlacements(unsigned) {

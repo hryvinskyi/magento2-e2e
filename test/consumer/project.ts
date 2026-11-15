@@ -44,11 +44,18 @@ function portOf(variables: EnvironmentVariables): string {
     return port;
 }
 
+/** Where the page server answers as the shop's admin. */
+export const ADMIN_PATH = '/backoffice/';
+
 export const ENVIRONMENTS: {
     readonly local: EnvironmentDefinition;
     readonly production: EnvironmentDefinition;
 } = {
-    local: { baseUrl: serverUrl({ shop: 'localhost' }), searchServiceOptional: true },
+    local: {
+        baseUrl: serverUrl({ shop: 'localhost' }),
+        searchServiceOptional: true,
+        adminUrl: variables => `http://localhost:${portOf(variables)}${ADMIN_PATH}`,
+    },
     production: { baseUrl: serverUrl({ shop: '127.0.0.1' }), production: true },
 };
 
@@ -83,4 +90,5 @@ export const project: MagentoProject = defineProject({
     safetyTags: { [TEST_ORDER_TAG]: testOrderSafetyRule },
     testOrderPlacements: [GUEST_PAYMENT_INFORMATION, OWN_CHECKOUT],
     shopClient: process.env.E2E_CONSUMER_SHOP_CLIENT === 'browser' ? 'browser' : 'runner',
+    admin: {},
 });

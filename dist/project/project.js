@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.defineProject = defineProject;
 exports.isMagentoProject = isMagentoProject;
 const environment_1 = require("../environment/environment");
+const admin_tag_1 = require("../safety/admin-tag");
 const safety_tags_1 = require("../safety/safety-tags");
 const placement_1 = require("../test-orders/placement");
 const own_entry_1 = require("./own-entry");
@@ -24,7 +25,10 @@ function defineProject(config) {
     }
     const storeMap = Object.freeze({ ...config.stores });
     const stores = Object.freeze(Object.values(storeMap));
-    const safetyTags = new safety_tags_1.SafetyTagRegistry(config.safetyTags ?? {});
+    const safetyTags = new safety_tags_1.SafetyTagRegistry({
+        ...config.safetyTags,
+        ...(config.admin === undefined ? {} : { [admin_tag_1.ADMIN_TAG]: (0, admin_tag_1.adminSafetyRule)(config.admin) }),
+    });
     const tags = Object.freeze(safetyTags.tags());
     const context = Object.freeze({
         stores,
