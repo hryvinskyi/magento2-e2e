@@ -53,7 +53,9 @@ test.describe('an @admin test', () => {
             expect(testIn(run.report, 'desktop', OPENS).status).toBe('expected');
             expect(testIn(run.report, 'desktop', SAME_SESSION).status).toBe('expected');
             expect(signIns(run.received)).toHaveLength(1);
-            expect(steps).toContain('Evaluate');
+            // The control that the reporter saw the sign-in's own call: Playwright titles an API step by its
+            // method name in older versions ("page.evaluate") and by a phrase in newer ones ("Evaluate").
+            expect(steps).toMatch(/^pw:api\t.*\bevaluate\b/imu);
             expect(steps).not.toContain(PASSWORD);
             expect(steps).not.toContain(USER);
             expect(run.reportText).not.toContain(PASSWORD);
