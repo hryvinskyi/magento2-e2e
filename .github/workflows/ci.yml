@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -31,12 +31,14 @@ jobs:
   peer-floor:
     # The declared peer range is `^1.51.0`: this job runs the suite on its lowest version, so the range
     # is a tested one rather than a guess.
+    # Playwright 1.51 knows the system packages of Ubuntu up to 24.04 only and refuses a newer image, so this job
+    # stays on the newest image its version supports while `ubuntu-latest` moves on.
     name: Node 22, Playwright 1.51
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
